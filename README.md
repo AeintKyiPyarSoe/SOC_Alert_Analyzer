@@ -5,7 +5,7 @@
 [![Tests](https://img.shields.io/badge/tests-34%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.0.0-orange.svg?style=flat&logo=windows)](https://github.com/karayuuco/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.0.0-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Less noise. More clarity.**
@@ -85,7 +85,7 @@
 
 Download the latest release and run without installing Python:
 
-1. Download **`SOC_Alert_Analyzer.exe`** from [Releases](https://github.com/karayuuco/SOC_Alert_Analyzer/releases).
+1. Download **`SOC_Alert_Analyzer.exe`** from [Releases](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
 2. Double-click the file. It will automatically:
    - Self-initialize a local SQLite database
    - Perform an initial baseline security audit of your laptop
@@ -95,7 +95,7 @@ Download the latest release and run without installing Python:
 
 ```powershell
 # 1. Clone repository
-git clone https://github.com/karayuuco/SOC_Alert_Analyzer.git
+git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
 cd SOC_Alert_Analyzer
 
 # 2. Install dependencies
