@@ -13,7 +13,7 @@
 
 ---
 
-## 🎬 10-Second Interactive Demo
+## 🎬 GIF Demo
 
 ![SOC Alert Analyzer Demo](docs/assets/demo.gif)
 
