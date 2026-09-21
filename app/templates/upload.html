@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Import Security Telemetry{% endblock %}
+
+{% block content %}
+<div class="container-narrow">
+    <div class="hero-section" style="padding-bottom: 0.5rem;">
+        <div class="hero-content">
+            <h1 class="hero-title">Import Security Telemetry</h1>
+            <p class="hero-subtitle">
+                Ingest Windows Event Logs, Web Server Logs, Firewall logs, Wazuh alerts, or Suricata EVE records into the analyzer.
+            </p>
+        </div>
+        <div class="hero-actions">
+            <a href="/" class="btn btn-secondary btn-sm">← Back to Workbench</a>
+        </div>
+    </div>
+
+    <!-- Direct Host Audit Card (Zero-Setup Alternative) -->
+    <div class="detail-section-card" style="margin-bottom: 1.25rem; border-left: 3px solid var(--accent-mint);">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <div style="max-width: 600px;">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">
+                    🛡️ Direct Host Security Audit (No Log File Needed)
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5;">
+                    The built-in host sensor can inspect your machine's active running processes, network listening sockets, and Windows event log security records immediately without configuring a SIEM.
+                </p>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="runHostAudit()">
+                🚀 Audit This Machine Now
+            </button>
+        </div>
+    </div>
+
+    <!-- Upload Card -->
+    <div class="detail-section-card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+        <form id="upload-form" enctype="multipart/form-data">
+            <!-- Dropzone -->
+            <div style="border: 2px dashed var(--border-color); border-radius: var(--radius-control); padding: 2.5rem 1.5rem; text-align: center; margin-bottom: 1.25rem; background: var(--bg-input); cursor: pointer;" onclick="document.getElementById('log-file-input').click()">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📥</div>
+                <h3 style="font-size: 1rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.25rem;">Choose Log File to Analyze</h3>
+                <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">Supports .json, .jsonl, .xml, .log, .csv, .eve, .txt (up to 50 MB)</p>
+                <input type="file" id="log-file-input" name="file" accept=".json,.jsonl,.log,.txt,.eve,.xml,.csv" style="display: none;" required>
+                <button type="button" class="btn btn-outline btn-sm">Browse Files</button>
+                <div id="file-chosen-name" style="margin-top: 0.5rem; font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent-mint);"></div>
+            </div>
+
+            <!-- Telemetry Source Format -->
+            <div style="margin-bottom: 1.25rem;">
+                <label for="source_type_select" style="display: block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.4rem;">
+                    Telemetry Source Format:
+                </label>
+                <select id="source_type_select" name="source_type" class="filter-select" style="width: 100%;">
+                    <option value="auto">Auto-Detect from Content</option>
+                    <option value="wazuh">Wazuh JSON Alerts</option>
+                    <option value="suricata">Suricata EVE JSON</option>
+                    <option value="windows">Windows Event Logs (XML, JSON, or Text)</option>
+                    <option value="web">Web Server Access Logs (Apache / Nginx / IIS)</option>
+                    <option value="firewall">Firewall Logs (Windows Firewall / iptables)</option>
+                    <option value="linux_auth">Linux Authentication Logs (/var/log/auth.log)</option>
+                    <option value="generic">Generic Security Alerts (CSV / JSON)</option>
+                </select>
+            </div>
+
+            <button type="submit" id="btn-submit-upload" class="btn btn-primary" style="width: 100%;">
+                Ingest & Analyze Telemetry →
+            </button>
+        </form>
+
+        <div id="upload-status" style="display: none; margin-top: 1rem; padding: 0.85rem; border-radius: var(--radius-control); font-size: 0.82rem;"></div>
+    </div>
+
+    <!-- Curated Training Datasets -->
+    <div class="detail-section-card">
+        <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.35rem;">
+            ⚡ Curated Practice Datasets
+        </h3>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+            Quickly populate the database with benchmark attack scenarios:
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;">
+            <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('wazuh')" style="text-align: left; padding: 0.85rem;">
+                <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🛡️</div>
+                <div style="color: var(--text-main); font-weight: 600;">Wazuh Alerts</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">SSH brute force & rootcheck</div>
+            </button>
+
+            <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('suricata')" style="text-align: left; padding: 0.85rem;">
+                <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🌐</div>
+                <div style="color: var(--text-main); font-weight: 600;">Suricata EVE</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">Port scans & RCE exploit</div>
+            </button>
+
+            <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('linux_auth')" style="text-align: left; padding: 0.85rem;">
+                <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🐧</div>
+                <div style="color: var(--text-main); font-weight: 600;">Linux Auth</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">Failed logins & sudo events</div>
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('log-file-input').addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            document.getElementById('file-chosen-name').textContent = 'Selected: ' + e.target.files[0].name;
+        }
+    });
+
+    document.getElementById('upload-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const form = e.target;
+        const fileInput = document.getElementById('log-file-input');
+        if (!fileInput.files.length) {
+            showToast('Please select a file first.');
+            return;
+        }
+
+        const formData = new FormData(form);
+        const statusBox = document.getElementById('upload-status');
+        const submitBtn = document.getElementById('btn-submit-upload');
+
+        statusBox.style.display = 'block';
+        statusBox.style.background = 'var(--bg-surface-secondary)';
+        statusBox.style.border = '1px solid var(--border-color)';
+        statusBox.style.color = 'var(--text-main)';
+        statusBox.innerHTML = '⏳ Ingesting, normalizing, and correlating security events...';
+        submitBtn.disabled = true;
+
+        try {
+            const resp = await fetch('/api/v1/alerts/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            if (resp.ok) {
+                statusBox.style.background = 'var(--accent-mint-dim)';
+                statusBox.style.border = '1px solid rgba(160, 237, 197, 0.4)';
+                statusBox.style.color = 'var(--accent-mint)';
+                statusBox.innerHTML = `
+                    <h4 style="margin-bottom: 4px;">✅ Ingestion Complete!</h4>
+                    <p style="color: var(--text-main); margin-bottom: 6px;">${data.message}</p>
+                    <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 10px;">
+                        Alerts Normalized: <strong>${data.alerts_count}</strong> | Incidents Correlated: <strong>${data.incidents_created}</strong>
+                    </p>
+                    <div style="display: flex; gap: 8px;">
+                        <a href="/" class="btn btn-sm btn-primary">Go to Workbench →</a>
+                        <a href="/alerts" class="btn btn-sm btn-outline">View Ingested Alerts</a>
+                    </div>
+                `;
+                form.reset();
+                document.getElementById('file-chosen-name').textContent = '';
+            } else {
+                statusBox.style.background = 'var(--color-critical-bg)';
+                statusBox.style.border = '1px solid var(--color-critical-border)';
+                statusBox.style.color = 'var(--color-critical)';
+                statusBox.innerHTML = `<strong>❌ Upload Failed:</strong> ${data.detail || 'An error occurred.'}`;
+            }
+        } catch (err) {
+            statusBox.style.background = 'var(--color-critical-bg)';
+            statusBox.style.border = '1px solid var(--color-critical-border)';
+            statusBox.style.color = 'var(--color-critical)';
+            statusBox.innerHTML = `<strong>❌ Error:</strong> ${err.message}`;
+        } finally {
+            submitBtn.disabled = false;
+        }
+    });
+
+    async function loadSampleDataset(type) {
+        showToast(`Loading sample ${type} telemetry...`);
+        try {
+            const resp = await fetch(`/api/v1/sample-data/load/${type}`, { method: 'POST' });
+            const data = await resp.json();
+            if (resp.ok) {
+                showToast(`Loaded ${data.alerts_count} alerts!`);
+                setTimeout(() => window.location.href = '/', 1000);
+            } else {
+                showToast(`Failed: ${data.detail || 'Error loading sample'}`);
+            }
+        } catch (err) {
+            showToast(`Error: ${err.message}`);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Investigation: {{ item.title if is_incident else item.description }}{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div style="font-size: 0.8rem; color: var(--text-faint); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+    <a href="/" style="color: var(--text-muted); text-decoration: none;">Workbench</a>
+    <span>/</span>
+    <a href="{{ '/incidents' if is_incident else '/alerts' }}" style="color: var(--text-muted); text-decoration: none;">
+        {{ 'Incidents' if is_incident else 'Alerts' }}
+    </a>
+    <span>/</span>
+    <span style="color: var(--text-main);">Investigation Case</span>
+</div>
+
+<!-- Banner Header -->
+<div class="detail-section-card" style="padding: 1.5rem; margin-bottom: 1.25rem;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                <span class="badge-sev badge-sev-{{ 'critical' if item.risk_score >= 75 else ('high' if item.risk_score >= 50 else ('medium' if item.risk_score >= 25 else 'low')) }}">
+                    {{ 'CRITICAL' if item.risk_score >= 75 else ('HIGH' if item.risk_score >= 50 else ('MEDIUM' if item.risk_score >= 25 else 'LOW')) }}
+                </span>
+                <span class="status-indicator status-{{ item.status|lower }}">
+                    Status: {{ item.status }}
+                </span>
+                {% if is_incident %}
+                <span class="alert-row-source-tag">📁 Correlated Incident ({{ item.alert_count }} Alerts)</span>
+                {% else %}
+                <span class="alert-row-source-tag">🚨 Single Alert ({{ item.source_type }})</span>
+                {% endif %}
+            </div>
+            <h1 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main); line-height: 1.3;">
+                {{ item.title if is_incident else item.description }}
+            </h1>
+        </div>
+
+        <div class="score-pill-large" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: var(--radius-control);">
+            <span>{{ item.risk_score }}</span>
+            <small>/ 100</small>
+        </div>
+    </div>
+</div>
+
+<!-- Two Column Investigation Layout -->
+<div class="investigation-workspace">
+    <!-- Left Column: Plain-Language Explanation & Actions -->
+    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <!-- 1. What happened? -->
+        <div class="detail-section-card">
+            <h4>
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                What happened?
+            </h4>
+            <p class="plain-explanation-text">{{ guidance.what_happened }}</p>
+        </div>
+
+        <!-- 2. Why is this suspicious? -->
+        <div class="detail-section-card">
+            <h4>
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                Why is this suspicious?
+            </h4>
+            <p class="plain-explanation-text">{{ guidance.why_suspicious }}</p>
+            {% if is_incident %}
+            <div style="font-size: 0.78rem; color: var(--text-faint); margin-top: 0.5rem; font-family: var(--font-mono);">
+                Timeline: {{ item.first_seen.strftime('%Y-%m-%d %H:%M:%S UTC') }} to {{ item.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC') }}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 3. MITRE Technique Panel -->
+        {% if item.mitre_technique %}
+        <div class="mitre-panel">
+            <div class="mitre-panel-header">
+                <span class="mitre-header-title">MITRE ATT&CK Reference</span>
+                <span class="mitre-unverified-tag">From event · unverified</span>
+            </div>
+            <div class="mitre-technique-row">
+                <span class="mitre-technique-name">{{ item.mitre_technique }}: {{ mitre_details.name }}</span>
+                <a href="{{ mitre_details.url }}" target="_blank" rel="noopener noreferrer" class="mitre-link">
+                    View Framework ↗
+                </a>
+            </div>
+            <div class="mitre-tactic-desc">
+                <strong>Tactic:</strong> {{ mitre_details.tactic }} • {{ mitre_details.description }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 4. Recommended Defensive Actions (Checklist) -->
+        <div class="checklist-card">
+            <div class="checklist-header">
+                <h4>Practical Defensive Playbook</h4>
+                <span class="checklist-progress-text" id="playbook-progress">
+                    0 of {{ guidance.recommended_actions|length }} steps completed
+                </span>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Follow these recommended verification steps to assess and protect the host:
+            </p>
+            <ul class="checklist-items" id="playbook-ul">
+                {% for action in guidance.recommended_actions %}
+                <li class="checklist-item" data-index="{{ loop.index0 }}">
+                    <input type="checkbox" id="action-step-{{ loop.index0 }}" aria-label="{{ action }}">
+                    <span>{{ action }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        {% if is_incident and item.alerts %}
+        <!-- Member Alerts Table -->
+        <div class="table-card">
+            <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 0.82rem;">
+                Correlated Member Alerts ({{ item.alerts|length }})
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Severity</th>
+                            <th>Description</th>
+                            <th>Attacker</th>
+                            <th>Target</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mem in item.alerts %}
+                        <tr>
+                            <td style="font-family: var(--font-mono); font-size: 0.72rem;">{{ mem.timestamp.strftime('%H:%M:%S') }}</td>
+                            <td><span class="badge-sev badge-sev-{{ mem.severity|lower }}">{{ mem.severity }}</span></td>
+                            <td style="font-size: 0.78rem;">{{ mem.description[:60] }}</td>
+                            <td><code>{{ mem.source_ip or 'Local' }}</code></td>
+                            <td><code>{{ mem.destination_ip or '-' }}</code></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Right Column: Evidence & Technical Context -->
+    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <!-- Evidence Facts -->
+        <div class="detail-section-card">
+            <h4>Observed Telemetry Facts</h4>
+            <table class="evidence-table">
+                <tbody>
+                    <tr>
+                        <td>Source Entity</td>
+                        <td>{{ item.source_ip or 'Local Host' }}</td>
+                    </tr>
+                    <tr>
+                        <td>Destination</td>
+                        <td>{{ item.destination_ip or '-' }}</td>
+                    </tr>
+                    {% if not is_incident %}
+                    <tr>
+                        <td>Source Port</td>
+                        <td>{{ item.source_port or '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td>Target Port</td>
+                        <td>{{ item.destination_port or '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td>Account</td>
+                        <td>{{ item.username or '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td>Telemetry Tool</td>
+                        <td>{{ item.source_type }}</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Raw JSON block -->
+        <div class="detail-section-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <h4>Original Telemetry Evidence</h4>
+                <button type="button" class="btn btn-outline btn-xs" onclick="copyPreBlock()">📋 Copy</button>
+            </div>
+            <pre class="json-code-block" id="raw-log-block"><code>{{ item.raw_log or '{"info": "Native Host EDR audit finding"}' }}</code></pre>
+        </div>
+
+        <!-- Back link -->
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="/" class="btn btn-secondary btn-sm" style="flex: 1;">← Back to Workbench</a>
+            <a href="{{ '/incidents' if is_incident else '/alerts' }}" class="btn btn-outline btn-sm" style="flex: 1;">
+                View All {{ 'Incidents' if is_incident else 'Alerts' }}
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const ul = document.getElementById('playbook-ul');
+        if (!ul) return;
+        const items = ul.querySelectorAll('.checklist-item');
+        const progressEl = document.getElementById('playbook-progress');
+        const total = items.length;
+
+        items.forEach((item) => {
+            const cb = item.querySelector('input[type="checkbox"]');
+            cb.addEventListener('change', () => {
+                if (cb.checked) {
+                    item.classList.add('checked');
+                } else {
+                    item.classList.remove('checked');
+                }
+                const checkedCount = ul.querySelectorAll('input[type="checkbox"]:checked').length;
+                progressEl.textContent = `${checkedCount} of ${total} steps completed`;
+            });
+        });
+    });
+
+    function copyPreBlock() {
+        const block = document.getElementById('raw-log-block');
+        if (!block) return;
+        navigator.clipboard.writeText(block.innerText)
+            .then(() => showToast('Evidence copied to clipboard'))
+            .catch(() => prompt('Copy event:', block.innerText));
+    }
+</script>
+{% endblock %}

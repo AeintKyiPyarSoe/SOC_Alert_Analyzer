@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Local databases & uploads
+*.db
+*.sqlite3
+soc_alerts.db
+uploads/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# PyInstaller build artifacts (Releases host the .exe)
+build/
+
+# OS specific
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+dist/
+

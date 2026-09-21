@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Security Alert Explorer{% endblock %}
+
+{% block content %}
+<div class="hero-section" style="padding-bottom: 0.5rem;">
+    <div class="hero-content">
+        <h1 class="hero-title">Security Alert Explorer</h1>
+        <p class="hero-subtitle">
+            Canonical normalized security alerts from all ingested telemetry sources, SIEM sensors, and host EDR audits.
+        </p>
+    </div>
+    <div class="hero-actions">
+        <a href="/upload" class="btn btn-primary btn-sm">➕ Import Logs</a>
+        <a href="/" class="btn btn-secondary btn-sm">← Back to Workbench</a>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="queue-panel" style="margin-bottom: 1.25rem;">
+    <div class="queue-controls-header">
+        <form method="get" action="/alerts" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; width: 100%;">
+            <div style="flex: 1; min-width: 200px;">
+                <label for="search" style="display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">Search Keywords / IP:</label>
+                <input type="text" id="search" name="search" value="{{ current_search or '' }}" placeholder="e.g. 192.168.1.45 or brute force" class="search-input" style="padding-left: 0.85rem;">
+            </div>
+
+            <div style="min-width: 140px;">
+                <label for="severity" style="display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">Severity:</label>
+                <select id="severity" name="severity" class="filter-select" style="width: 100%;">
+                    <option value="">All Severities</option>
+                    <option value="CRITICAL" {% if current_severity == 'CRITICAL' %}selected{% endif %}>Critical</option>
+                    <option value="HIGH" {% if current_severity == 'HIGH' %}selected{% endif %}>High</option>
+                    <option value="MEDIUM" {% if current_severity == 'MEDIUM' %}selected{% endif %}>Medium</option>
+                    <option value="LOW" {% if current_severity == 'LOW' %}selected{% endif %}>Low</option>
+                </select>
+            </div>
+
+            <div style="min-width: 140px;">
+                <label for="status" style="display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">Status:</label>
+                <select id="status" name="status" class="filter-select" style="width: 100%;">
+                    <option value="">All Statuses</option>
+                    <option value="OPEN" {% if current_status == 'OPEN' %}selected{% endif %}>Open</option>
+                    <option value="INVESTIGATING" {% if current_status == 'INVESTIGATING' %}selected{% endif %}>Investigating</option>
+                    <option value="RESOLVED" {% if current_status == 'RESOLVED' %}selected{% endif %}>Resolved</option>
+                    <option value="FALSE_POSITIVE" {% if current_status == 'FALSE_POSITIVE' %}selected{% endif %}>False Positive</option>
+                </select>
+            </div>
+
+            <div style="min-width: 140px;">
+                <label for="source" style="display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">Source Tool:</label>
+                <select id="source" name="source" class="filter-select" style="width: 100%;">
+                    <option value="">All Sources</option>
+                    <option value="Host" {% if current_source == 'Host' %}selected{% endif %}>Host Sensor</option>
+                    <option value="Windows" {% if current_source == 'Windows' %}selected{% endif %}>Windows Event</option>
+                    <option value="Web" {% if current_source == 'Web' %}selected{% endif %}>Web Access</option>
+                    <option value="Firewall" {% if current_source == 'Firewall' %}selected{% endif %}>Firewall</option>
+                    <option value="Wazuh" {% if current_source == 'Wazuh' %}selected{% endif %}>Wazuh</option>
+                    <option value="Suricata" {% if current_source == 'Suricata' %}selected{% endif %}>Suricata</option>
+                    <option value="Linux" {% if current_source == 'Linux' %}selected{% endif %}>Linux Auth</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem;">
+                <button type="submit" class="btn btn-primary btn-sm">Apply Filter</button>
+                <a href="/alerts" class="btn btn-outline btn-sm">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Alerts Table Card -->
+<div class="table-card">
+    <div style="padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted);">
+        <span>Showing <strong>{{ alerts|length }}</strong> recorded alerts</span>
+    </div>
+
+    {% if alerts %}
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Timestamp (UTC)</th>
+                    <th>Severity</th>
+                    <th>Score</th>
+                    <th>Event Classification</th>
+                    <th>Source Tool</th>
+                    <th>Origin IP</th>
+                    <th>Target IP</th>
+                    <th>MITRE ATT&CK</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in alerts %}
+                <tr>
+                    <td style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-faint);">
+                        {{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </td>
+                    <td>
+                        <span class="badge-sev badge-sev-{{ a.severity|lower }}">{{ a.severity }}</span>
+                    </td>
+                    <td>
+                        <span style="font-family: var(--font-mono); font-weight: 700;">{{ a.risk_score }}</span>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600; color: var(--text-main);">{{ a.event_type }}</div>
+                        <div style="font-size: 0.76rem; color: var(--text-muted); max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            {{ a.description }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="alert-row-source-tag">{{ a.source_type }}</span>
+                    </td>
+                    <td><code>{{ a.source_ip or '-' }}</code></td>
+                    <td><code>{{ a.destination_ip or '-' }}</code></td>
+                    <td>
+                        {% if a.mitre_technique %}
+                        <a href="https://attack.mitre.org/techniques/{{ a.mitre_technique }}/" target="_blank" rel="noopener noreferrer" style="color: var(--mitre-text); font-family: var(--font-mono); font-size: 0.78rem; text-decoration: none;">
+                            {{ a.mitre_technique }} ↗
+                        </a>
+                        {% else %}
+                        <span style="color: var(--text-faint);">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="status-indicator status-{{ a.status|lower }}">{{ a.status }}</span>
+                    </td>
+                    <td>
+                        <a href="/alerts/{{ a.id }}" class="btn btn-outline btn-xs">Investigate →</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="queue-empty-state">
+        <p>No alerts match your filter criteria.</p>
+        <a href="/alerts" class="btn btn-outline btn-sm">Clear Filters</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

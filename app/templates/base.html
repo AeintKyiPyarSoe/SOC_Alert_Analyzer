@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SOC Alert Analyzer{% endblock %} — Nicole’s Security Lab</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <!-- 11. Accessibility: Skip to Content Link -->
+    <a href="#alert-queue-section" class="skip-link">Skip to alerts</a>
+
+    <!-- Header Region: Brand, LAB badge, private workspace label, help button, Nicole's initial -->
+    <header class="site-header" role="banner">
+        <div class="header-container">
+            <div class="header-left">
+                <a href="/" class="brand-wrapper">
+                    <svg class="brand-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span class="brand-title">SOC Alert Analyzer</span>
+                </a>
+                <span class="badge-lab">LAB</span>
+                <span class="workspace-label">Nicole’s Security Lab • Private workspace</span>
+            </div>
+
+            <div class="header-right">
+                <!-- Host EDR Live Sensor Status Pill -->
+                <div class="live-sensor-pill" id="live-sensor-pill" title="Native Host Security Sensor & Live Telemetry Stream">
+                    <span class="pulse-dot"></span>
+                    <span id="live-sensor-text">HOST SENSOR: ACTIVE</span>
+                </div>
+
+                <!-- Navigation Links -->
+                <nav class="nav-links-bar" aria-label="Main Navigation">
+                    <a href="/" class="nav-link-btn {% if active_page == 'dashboard' %}active{% endif %}">Workbench</a>
+                    <a href="/alerts" class="nav-link-btn {% if active_page == 'alerts' %}active{% endif %}">Alerts</a>
+                    <a href="/incidents" class="nav-link-btn {% if active_page == 'incidents' %}active{% endif %}">Incidents</a>
+                    <a href="/upload" class="nav-link-btn {% if active_page == 'upload' %}active{% endif %}">Import Logs</a>
+                </nav>
+
+                <!-- Help Button -->
+                <button class="btn-header-help" onclick="openHelpModal()" aria-label="Help and Scoring Guide">
+                    <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    <span>Help</span>
+                </button>
+
+                <!-- Nicole's Avatar Initial (Visual Identity Marker) -->
+                <div class="user-avatar-marker" title="Nicole’s Security Lab" aria-label="Nicole's Visual Identity Marker">N</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main id="main-content" class="main-wrapper" role="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer Region: Portfolio Attribution and Reset Demo -->
+    <footer class="site-footer" role="contentinfo">
+        <div class="footer-container">
+            <span>SOC Alert Analyzer — Nicole’s Security Lab • Portfolio demonstration</span>
+            <button class="btn-reset-demo" onclick="resetDemo()" aria-label="Reset demo dataset to initial state">
+                ↺ Reset demo
+            </button>
+        </div>
+    </footer>
+
+    <!-- 6.4 Alert Playground Dialog Modal -->
+    <div class="modal-backdrop" id="playground-modal" role="dialog" aria-modal="true" aria-labelledby="playground-modal-title">
+        <div class="modal-dialog-box">
+            <div class="modal-dialog-header">
+                <h3 id="playground-modal-title">Alert Playground</h3>
+                <button class="btn-close-modal" onclick="closeAllModals()" aria-label="Close dialog">×</button>
+            </div>
+            <div class="modal-dialog-body">
+                <p style="color: var(--text-muted); font-size: 0.84rem;">
+                    Load curated sample telemetry or paste custom Wazuh / Suricata JSON records (supports JSON array, single JSON object, or JSONL up to 1,000 records / 2 MB).
+                </p>
+
+                <!-- Sample choices -->
+                <div>
+                    <label style="display: block; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.45rem;">
+                        Quick Sample Datasets:
+                    </label>
+                    <div class="sample-choices-group">
+                        <button type="button" class="sample-choice-btn" onclick="loadPlaygroundSample('mixed')">
+                            🛡️ Mixed (12 alerts)
+                        </button>
+                        <button type="button" class="sample-choice-btn" onclick="loadPlaygroundSample('wazuh')">
+                            🖥️ Wazuh (6 alerts)
+                        </button>
+                        <button type="button" class="sample-choice-btn" onclick="loadPlaygroundSample('suricata')">
+                            🌐 Suricata (6 alerts)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- File input -->
+                <div>
+                    <label for="playground-file-input" style="display: block; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.45rem;">
+                        Or Choose Sanitized File (.json, .jsonl, .ndjson):
+                    </label>
+                    <input type="file" id="playground-file-input" accept=".json,.jsonl,.ndjson" onchange="handlePlaygroundFileUpload(event)" style="font-size: 0.8rem; color: var(--text-muted); width: 100%;">
+                </div>
+
+                <!-- JSON Editor Textarea -->
+                <div>
+                    <label for="playground-json-editor" style="display: block; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.45rem;">
+                        JSON Event Data Editor:
+                    </label>
+                    <textarea id="playground-json-editor" class="json-editor-textarea" spellcheck="false" placeholder="Paste or edit event JSON array or JSONL records here..."></textarea>
+                </div>
+
+                <!-- Inline Error Banner -->
+                <div class="inline-error-banner" id="playground-error-banner" role="alert"></div>
+            </div>
+            <div class="modal-dialog-footer">
+                <button type="button" class="btn btn-outline btn-sm" onclick="closeAllModals()">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="parsePlaygroundData()">
+                    Parse & investigate →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6.5 Help Dialog Modal -->
+    <div class="modal-backdrop" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+        <div class="modal-dialog-box">
+            <div class="modal-dialog-header">
+                <h3 id="help-modal-title">Investigation & Scoring Guide</h3>
+                <button class="btn-close-modal" onclick="closeAllModals()" aria-label="Close dialog">×</button>
+            </div>
+            <div class="modal-dialog-body">
+                <!-- Scoring Guide -->
+                <div class="help-guide-section">
+                    <h4>How Priority Scoring Works (0–100 Demo Policy)</h4>
+                    <p style="color: var(--text-muted); font-size: 0.82rem;">
+                        The 0–100 score indicates triage precedence rather than a statistical probability of compromise or vendor risk score.
+                    </p>
+                    <table class="help-table">
+                        <thead>
+                            <tr><th>Source or Condition</th><th>Calculation Policy</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Wazuh Log Level</td><td><code>round(rule.level / 16 × 85)</code></td></tr>
+                            <tr><td>Suricata Severity 1</td><td>Base score 70</td></tr>
+                            <tr><td>Suricata Severity 2</td><td>Base score 40</td></tr>
+                            <tr><td>Suricata Severity 3+</td><td>Base score 15</td></tr>
+                            <tr><td>High Attempt Count (≥ 20)</td><td>Add +12 bonus points</td></tr>
+                            <tr><td>Final Score Range</td><td>Capped between 0 and 100</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- MITRE Mapping Limitations -->
+                <div class="help-guide-section">
+                    <h4>MITRE ATT&CK® Mapping Limitations</h4>
+                    <p style="color: var(--text-muted); font-size: 0.82rem;">
+                        Technique mappings are extracted directly from detection metadata provided in the telemetry record. They are explicitly tagged <em>"From event · unverified"</em> because detection of a technique signature does not constitute confirmed compromise.
+                    </p>
+                </div>
+
+                <!-- Privacy & Session State -->
+                <div class="help-guide-section">
+                    <h4>Privacy & Session Behavior</h4>
+                    <p style="color: var(--text-muted); font-size: 0.82rem;">
+                        Review marks and checklist step completions are persisted safely in the browser tab's <code>sessionStorage</code>. The prototype operates locally without uploading imported alert contents to third-party AI models or tracking telemetry.
+                    </p>
+                </div>
+
+                <!-- Documentation Links -->
+                <div class="help-guide-section">
+                    <h4>Documentation & Framework References</h4>
+                    <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.82rem;">
+                        <li><a href="https://documentation.wazuh.com/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-mint); text-decoration: none;">📖 Wazuh SIEM/EDR Documentation ↗</a></li>
+                        <li><a href="https://suricata.readthedocs.io/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-mint); text-decoration: none;">📖 Suricata EVE Output Specification ↗</a></li>
+                        <li><a href="https://attack.mitre.org/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-mint); text-decoration: none;">🎯 MITRE ATT&CK Enterprise Matrix ↗</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-dialog-footer">
+                <button type="button" class="btn btn-primary btn-sm" onclick="closeAllModals()">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+    <!-- Client Controller Script -->
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
