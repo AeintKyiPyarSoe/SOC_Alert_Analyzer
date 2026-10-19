@@ -2,12 +2,12 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Audited](https://img.shields.io/badge/security-RBAC%20%26%20Bandit%20Verified-blueviolet.svg?style=flat&logo=shield)](docs/acceptance_criteria.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.2.0-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.1-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Less noise. More clarity.**  
@@ -28,11 +28,17 @@
   * `ADMIN`: Full system control, database clearing, alert deletion, configuration management.
   * `ANALYST`: Log ingestion, incident/alert status updates, live host audits, and simulation drills.
   * `VIEWER`: Read-only access to dashboards, alerts, incidents, and threat statistics.
-* **Browser Session Authentication**:
-  * Implements secure `HttpOnly`, `SameSite=Lax` session cookie authentication (`/api/v1/auth/login`, `/api/v1/auth/logout`, `/api/v1/auth/me`).
-  * **Zero Privileged Secrets in Frontend**: API keys and master secrets are never injected into client-side JavaScript or HTML templates.
-  * **Interactive Auth Modal**: Users can securely authenticate or switch roles directly from the interface by clicking Nicole's avatar or via the settings dialog.
-  * **WebSocket Protection**: `/ws/threats` validates incoming handshake session cookies or ticket query tokens, closing unauthorized connections with policy violation code `1008`.
+* **Server-Side Session & CSRF Protection**:
+  * **Opaque Session Tokens**: Privileged API keys are never stored in browser cookies or client JavaScript. Browser authentication uses cryptographically secure, opaque session cookies (`soc_session`) with `HttpOnly`, `SameSite=Lax`, and `Secure` attributes.
+  * **Hashed Server Store**: Session identifiers are hashed using SHA-256 before storage in memory to eliminate plaintext credential exposure in server memory dumps.
+  * **CSRF Defense**: State-changing browser operations (`POST`, `PATCH`, `DELETE`) require a cryptographically verified `X-CSRF-Token` header validated against the session store via constant-time comparison.
+  * **Session Lifecycle**: Supports automatic session expiration, session rotation upon authentication to prevent fixation, and explicit server revocation upon logout.
+* **WebSocket Defense & Single-Use Handshake Tickets**:
+  * `/ws/threats` eliminates long-lived keys in URL query strings, using browser session cookies or short-lived, single-use connection tickets (`POST /api/v1/auth/ws-ticket`).
+  * Enforces strict Origin header validation against allowed hosts to protect against Cross-Site WebSocket Hijacking (CSWSH).
+  * Implements stream-level data separation so unauthenticated/demo viewers never receive sensitive genuine host telemetry or live malicious process events.
+* **Data Protection & Sanitized Demonstration Mode**:
+  * Unauthenticated viewers are strictly restricted to simulated demonstration alerts. Genuine host telemetry, raw system logs, and internal process lists require authenticated Analyst or Admin clearance.
 * **Secrets Management**: Removed all hardcoded database credentials. Sensitive variables (`POSTGRES_PASSWORD`, `SECRET_KEY`, `ADMIN_API_KEY`, `ANALYST_API_KEY`) are dynamically loaded via environment variables and `.env`. In production mode, weak or default credentials cause immediate startup failure.
 * **First-Run Desktop Security**: Standalone desktop installations auto-generate cryptographically secure random API keys saved in `%LOCALAPPDATA%\SOC_Alert_Analyzer\.auth_credentials` with restricted user-only permissions (`0o600`).
 * **Container Hardening**: Docker container runs as an unprivileged, non-root user (`socuser:socgroup`). PostgreSQL ports are restricted to internal container networking and blocked from public host exposure.

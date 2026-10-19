@@ -56,6 +56,34 @@ jobs:
         run: |
           .\dist\SOC_Alert_Analyzer.exe --help
 
+      - name: Verify Packaged Resources & Live HTTP API Smoke Test
+        shell: powershell
+        run: |
+          # 1. Verify executable size and existence
+          if (!(Test-Path "dist\SOC_Alert_Analyzer.exe")) {
+            throw "Executable dist\SOC_Alert_Analyzer.exe not found!"
+          }
+          $exeSize = (Get-Item "dist\SOC_Alert_Analyzer.exe").Length
+          if ($exeSize -lt 20000000) {
+            throw "Executable size is abnormally small ($exeSize bytes), resources may be missing."
+          }
+          Write-Host "Packaged executable verified ($exeSize bytes)."
+
+          # 2. Launch in background for HTTP API smoke test
+          $proc = Start-Process .\dist\SOC_Alert_Analyzer.exe -ArgumentList '--port 8011 --no-browser' -PassThru
+          Start-Sleep -Seconds 6
+
+          try {
+            $resp = Invoke-RestMethod -Uri "http://127.0.0.1:8011/api/v1/auth/me" -TimeoutSec 10
+            Write-Host "Live Executable Health Check: SUCCESS"
+            Write-Host ($resp | ConvertTo-Json)
+          } catch {
+            Write-Host "Live smoke test error: $_"
+            throw $_
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Generate SHA-256 Release Checksum
         run: |
           python -c "import hashlib; h = hashlib.sha256(open('dist/SOC_Alert_Analyzer.exe', 'rb').read()).hexdigest(); open('dist/SHA256SUMS.txt', 'w').write(f'{h}  SOC_Alert_Analyzer.exe\n'); print(f'Generated SHA-256: {h}')"

@@ -70,13 +70,18 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.0"
+    VERSION: str = "1.2.1"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
     DEMO_MODE: bool = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
 
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
+
+    # Session & Cookie Security
+    SESSION_EXPIRY_SECONDS: int = int(os.getenv("SESSION_EXPIRY_SECONDS", "43200"))
+    WS_TICKET_EXPIRY_SECONDS: int = int(os.getenv("WS_TICKET_EXPIRY_SECONDS", "60"))
+    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
 
     # Database Configuration
     _pg_user = os.getenv("POSTGRES_USER")

@@ -85,8 +85,19 @@ function loadInitialRealHostAlerts() {
     }
 }
 
+function getCsrfToken() {
+    if (SOC_STATE.csrfToken) return SOC_STATE.csrfToken;
+    const match = document.cookie.match(/(?:^|;\s*)soc_csrf=([^;]+)/);
+    if (match) return decodeURIComponent(match[1]);
+    return null;
+}
+
 function getApiHeaders(extraHeaders = {}) {
     const headers = { ...extraHeaders };
+    const csrf = getCsrfToken();
+    if (csrf) {
+        headers['X-CSRF-Token'] = csrf;
+    }
     const key = sessionStorage.getItem('soc_api_key') || localStorage.getItem('soc_api_key');
     if (key) {
         headers['X-API-Key'] = key;
@@ -224,10 +235,26 @@ function sortAlerts() {
 // --------------------------------------------------------------------------
 let threatSocket = null;
 
-function initThreatStream() {
+async function initThreatStream() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const key = sessionStorage.getItem('soc_api_key') || localStorage.getItem('soc_api_key');
-    const query = key ? `?token=${encodeURIComponent(key)}` : '';
+    let query = '';
+
+    // Request short-lived single-use connection ticket to avoid exposing credentials in URLs
+    try {
+        const ticketResp = await fetch('/api/v1/auth/ws-ticket', {
+            method: 'POST',
+            headers: getApiHeaders()
+        });
+        if (ticketResp.ok) {
+            const ticketData = await ticketResp.json();
+            if (ticketData && ticketData.ticket) {
+                query = `?ticket=${encodeURIComponent(ticketData.ticket)}`;
+            }
+        }
+    } catch (e) {
+        // Fall back to automatic cookie-based WebSocket handshake
+    }
+
     const wsUrl = `${protocol}//${window.location.host}/ws/threats${query}`;
 
     const liveText = document.getElementById('live-sensor-text');
@@ -1274,6 +1301,10 @@ async function checkAuthStatus() {
             const role = data.role || 'VIEWER';
             const isAuth = Boolean(data.authenticated);
 
+            if (data.csrf_token) {
+                SOC_STATE.csrfToken = data.csrf_token;
+            }
+
             if (headerLabel) {
                 headerLabel.textContent = `Role: ${role.charAt(0) + role.slice(1).toLowerCase()}`;
             }
@@ -1360,7 +1391,12 @@ async function submitAuthKey() {
 
         if (resp.ok) {
             const data = await resp.json();
-            sessionStorage.setItem('soc_api_key', key);
+            if (data.csrf_token) {
+                SOC_STATE.csrfToken = data.csrf_token;
+            }
+            sessionStorage.removeItem('soc_api_key');
+            localStorage.removeItem('soc_api_key');
+
             if (feedback) {
                 feedback.className = 'auth-feedback-banner success';
                 feedback.innerHTML = `✅ Signed in successfully as <strong>${data.role}</strong> (${data.username}).`;
@@ -1399,12 +1435,17 @@ async function submitAuthKey() {
 }
 
 async function clearAuthKey() {
+    SOC_STATE.csrfToken = null;
     sessionStorage.removeItem('soc_api_key');
     localStorage.removeItem('soc_api_key');
     try {
-        await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
+        await fetch('/api/v1/auth/logout', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: getApiHeaders()
+        });
     } catch (e) {}
-    showToast('Logged out of session.', 'info');
+    showToast('Signed out of session.');
     await checkAuthStatus();
     closeAuthModal();
 }

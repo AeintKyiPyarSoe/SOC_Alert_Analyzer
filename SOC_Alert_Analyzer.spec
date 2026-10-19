@@ -67,6 +67,7 @@ hiddenimports = [
     'app.security.simulator',
     'app.security.stream',
     'app.security.auth',
+    'app.security.session',
     'app.security.ip_utils',
     'app.security.upload_security',
     'app.database.connection',

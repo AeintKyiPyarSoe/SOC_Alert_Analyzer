@@ -92,7 +92,7 @@ async def websocket_threats_endpoint(websocket: WebSocket):
         await websocket.close(code=1008)  # 1008 Policy Violation
         return
 
-    await stream_manager.connect(websocket)
+    await stream_manager.connect(websocket, user=user)
     try:
         while True:
             # Keep socket alive and accept ping/commands from client
