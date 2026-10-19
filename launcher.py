@@ -70,6 +70,18 @@ def print_banner(host: str, port: int):
     db_type = "PostgreSQL" if "postgresql" in settings.DATABASE_URL.lower() else "SQLite (Local File)"
     auth_status = "ENABLED (RBAC)" if settings.AUTH_ENABLED else "DISABLED (Dev Mode)"
 
+    creds_notice = ""
+    if getattr(settings, "FIRST_RUN_GENERATED", False):
+        creds_notice = rf"""
+================================================================
+  [!] FIRST-RUN LOCAL CREDENTIALS GENERATED:
+  [!] Admin API Key   : {settings.ADMIN_API_KEY}
+  [!] Analyst API Key : {settings.ANALYST_API_KEY}
+  Credentials securely stored with restricted permissions in:
+  {settings.DATA_DIR / ".auth_credentials"}
+================================================================
+"""
+
     banner = rf"""
 ================================================================
    ____   ___   ____     _    _           _       
@@ -79,15 +91,17 @@ def print_banner(host: str, port: int):
   |____/ \___/ \____|/_/   \_\_|\___|_|   \__|___/
                      
   Defensive Security Operations Center & Real-Time EDR Analyzer
+  Version: {settings.VERSION}
 ================================================================
   [+] Web Dashboard  : {url}
   [+] API Swagger UI : {docs_url}
+  [+] Data Directory : {settings.DATA_DIR}
   [+] Database Engine: {db_type}
   [+] Authentication : {auth_status}
   [+] Host Sensor    : Native EDR-Lite (Process Trees, Sockets, LOLBins)
   [+] MITRE ATT&CK   : Enterprise v14 Mappings Active
-================================================================
-  INFO: Running in standalone defensive mode.
+================================================================{creds_notice}
+  INFO: Running in standalone defensive mode on local loopback interface.
   Press Ctrl+C to terminate the server.
 ================================================================
 """

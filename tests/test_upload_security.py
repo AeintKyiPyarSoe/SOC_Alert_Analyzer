@@ -80,3 +80,37 @@ def test_upload_malformed_xml_returns_422(client):
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert "Error parsing log file" in detail or "No valid security alerts" in detail
+
+def test_upload_exceeds_max_events_per_upload(client, monkeypatch):
+    import json
+    monkeypatch.setattr(settings, "MAX_EVENTS_PER_UPLOAD", 5)
+    events = [
+        {"timestamp": f"2026-09-10T10:0{i}:00Z", "description": f"Test alert {i}", "event_type": "security_anomaly"}
+        for i in range(10)
+    ]
+    raw_json = json.dumps(events).encode("utf-8")
+    response = client.post(
+        "/api/v1/alerts/upload",
+        files={"file": ("too_many_events.json", io.BytesIO(raw_json), "application/json")},
+        data={"source_type": "generic"}
+    )
+    assert response.status_code == 413
+    assert "exceeds the limit of 5 events" in response.json()["detail"]
+
+def test_upload_batch_processing_large_event_set(client, monkeypatch):
+    import json
+    # Use small batch size to exercise batch chunking loop
+    monkeypatch.setattr(settings, "DB_BATCH_SIZE", 50)
+    events = [
+        {"timestamp": f"2026-09-10T10:00:{i:02d}Z", "description": f"Batch alert {i}", "event_type": "security_anomaly"}
+        for i in range(60)
+    ]
+    raw_json = json.dumps(events).encode("utf-8")
+    response = client.post(
+        "/api/v1/alerts/upload",
+        files={"file": ("batch_events.json", io.BytesIO(raw_json), "application/json")},
+        data={"source_type": "generic"}
+    )
+    assert response.status_code == 201
+    assert response.json()["alerts_count"] == 60
+

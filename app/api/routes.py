@@ -1,9 +1,11 @@
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Response, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func
 
+from app.config import settings
 from app.database.connection import get_db
 from app.models.alert import Alert
 from app.models.incident import Incident
@@ -18,21 +20,59 @@ from app.security.normalizer import AlertNormalizer
 from app.security.correlator import IncidentCorrelator
 from app.security.remediation import get_remediation_guidance
 from app.security.mitre_mapper import MitreMapper
-from app.security.auth import get_current_user, require_role, Role, User
+from app.security.auth import get_current_user, require_role, validate_token, Role, User
 from app.security.upload_security import SecureUploadHandler
 
 router = APIRouter()
 
 # -------------------------------------------------------------
-# REST API: Authentication Profile
+# REST API: Authentication & Session Management
 # -------------------------------------------------------------
+
+class LoginRequest(BaseModel):
+    api_key: str
 
 @router.get("/auth/me")
 def get_auth_profile(user: User = Depends(get_current_user)):
-    """Inspect caller's current authentication identity and assigned role."""
+    """Inspect caller's current authentication identity, role, and environment mode."""
     return {
+        "authenticated": user.username not in ("anonymous", "demo_viewer"),
+        "username": user.username,
+        "role": user.role.value,
+        "demo_mode": settings.DEMO_MODE,
+        "auth_enabled": settings.AUTH_ENABLED
+    }
+
+@router.post("/auth/login")
+def login_route(payload: LoginRequest, response: Response):
+    """Authenticate browser session with an API key, issuing an HttpOnly session cookie."""
+    user = validate_token(payload.api_key)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key. Please check your credentials."
+        )
+    response.set_cookie(
+        key="soc_api_key",
+        value=payload.api_key.strip(),
+        httponly=True,
+        samesite="lax",
+        max_age=86400 * 7,
+        path="/"
+    )
+    return {
+        "status": "success",
         "username": user.username,
         "role": user.role.value
+    }
+
+@router.post("/auth/logout")
+def logout_route(response: Response):
+    """Clear authenticated session cookie."""
+    response.delete_cookie(key="soc_api_key", path="/")
+    return {
+        "status": "success",
+        "message": "Logged out successfully."
     }
 
 # -------------------------------------------------------------
@@ -75,8 +115,16 @@ async def upload_log_file(
             detail="No valid security alerts could be extracted from the uploaded file."
         )
 
-    # Normalize and persist alerts
-    created_alerts = []
+    # Enforce maximum event count to prevent denial of service and memory exhaustion
+    if len(raw_events) > settings.MAX_EVENTS_PER_UPLOAD:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded log file extracted {len(raw_events)} events, which exceeds the limit of {settings.MAX_EVENTS_PER_UPLOAD} events per upload."
+        )
+
+    # Normalize and persist alerts using bounded memory batches
+    total_ingested = 0
+    batch = []
     for raw_ev in raw_events:
         raw_ev.setdefault("telemetry_origin", "HISTORICAL_LOG")
         normalized = AlertNormalizer.normalize(raw_ev)
@@ -99,8 +147,17 @@ async def upload_log_file(
             status="OPEN",
             raw_log=normalized.get("raw_log")
         )
-        db.add(alert)
-        created_alerts.append(alert)
+        batch.append(alert)
+        if len(batch) >= settings.DB_BATCH_SIZE:
+            db.add_all(batch)
+            db.flush()
+            total_ingested += len(batch)
+            batch = []
+
+    if batch:
+        db.add_all(batch)
+        db.flush()
+        total_ingested += len(batch)
 
     db.commit()
 
@@ -109,9 +166,9 @@ async def upload_log_file(
 
     return {
         "status": "success",
-        "message": f"Successfully ingested {len(created_alerts)} alerts from '{safe_filename}'.",
+        "message": f"Successfully ingested {total_ingested} alerts from '{safe_filename}'.",
         "source_type_used": detected_source,
-        "alerts_count": len(created_alerts),
+        "alerts_count": total_ingested,
         "incidents_created": len(incidents)
     }
 

@@ -12,6 +12,7 @@ uploads/
 .env
 .env.local
 .env.*.local
+.auth_credentials
 
 # Virtual environments
 .venv/

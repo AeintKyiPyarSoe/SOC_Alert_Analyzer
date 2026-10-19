@@ -1,7 +1,7 @@
 import re
 import json
-import xml.etree.ElementTree as ET
 import logging
+import defusedxml.ElementTree as ET
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from app.parsers.base import BaseParser

@@ -28,7 +28,7 @@ from app.security.normalizer import AlertNormalizer
 from app.security.correlator import IncidentCorrelator
 from app.security.stream import stream_manager
 from app.security.host_sensor import host_sensor, real_host_monitor_loop
-from app.security.auth import require_role, Role, User
+from app.security.auth import require_role, Role, User, authenticate_websocket
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     BASE_DIR = Path(sys._MEIPASS) / "app"
@@ -86,7 +86,12 @@ app.include_router(api_router, prefix=settings.API_V1_STR, tags=["Security Telem
 
 @app.websocket("/ws/threats")
 async def websocket_threats_endpoint(websocket: WebSocket):
-    """Real-time bidirectional WebSocket connection for live threat feeds."""
+    """Real-time bidirectional WebSocket connection for live threat feeds with authentication."""
+    user = await authenticate_websocket(websocket)
+    if not user:
+        await websocket.close(code=1008)  # 1008 Policy Violation
+        return
+
     await stream_manager.connect(websocket)
     try:
         while True:
@@ -201,7 +206,7 @@ def dashboard_view(request: Request, db: Session = Depends(get_db)):
             "serialized_alerts": serialized_alerts,
             "incidents": incidents,
             "host_info": host_sensor.get_host_info(),
-            "admin_key": settings.ADMIN_API_KEY
+            "demo_mode": settings.DEMO_MODE
         }
     )
 
@@ -249,7 +254,7 @@ def alerts_view(
             "current_status": status,
             "current_source": source,
             "current_search": search,
-            "admin_key": settings.ADMIN_API_KEY
+            "demo_mode": settings.DEMO_MODE
         }
     )
 
@@ -272,7 +277,7 @@ def alert_investigation_view(alert_id: uuid.UUID, request: Request, db: Session 
             "is_incident": False,
             "guidance": guidance,
             "mitre_details": mitre_details,
-            "admin_key": settings.ADMIN_API_KEY
+            "demo_mode": settings.DEMO_MODE
         }
     )
 
@@ -297,7 +302,7 @@ def incidents_view(
             "active_page": "incidents",
             "incidents": incidents,
             "current_status": status,
-            "admin_key": settings.ADMIN_API_KEY
+            "demo_mode": settings.DEMO_MODE
         }
     )
 
@@ -320,7 +325,7 @@ def incident_investigation_view(incident_id: uuid.UUID, request: Request, db: Se
             "is_incident": True,
             "guidance": guidance,
             "mitre_details": mitre_details,
-            "admin_key": settings.ADMIN_API_KEY
+            "demo_mode": settings.DEMO_MODE
         }
     )
 
@@ -332,7 +337,7 @@ def upload_view(request: Request):
         name="upload.html",
         context={
             "active_page": "upload",
-            "admin_key": settings.ADMIN_API_KEY
+            "demo_mode": settings.DEMO_MODE
         }
     )
 

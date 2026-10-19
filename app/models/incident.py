@@ -1,11 +1,16 @@
+from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import (
     String, Integer, Text, DateTime, ForeignKey, CheckConstraint, Index, Uuid
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.connection import Base
+
+if TYPE_CHECKING:
+    from app.models.alert import Alert
+
 
 class IncidentAlert(Base):
     __tablename__ = "incident_alerts"
@@ -24,11 +29,15 @@ class IncidentAlert(Base):
         Index("idx_incident_alerts_alert_id", "alert_id"),
     )
 
+
 class Incident(Base):
     __tablename__ = "incidents"
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
+    )
+    correlation_key: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -45,7 +54,7 @@ class Incident(Base):
     )
 
     # Relationship to member Alerts
-    alerts: Mapped[List["Alert"]] = relationship(
+    alerts: Mapped[List[Alert]] = relationship(
         secondary="incident_alerts", back_populates="incidents"
     )
 
@@ -54,4 +63,6 @@ class Incident(Base):
         CheckConstraint("alert_count >= 1", name="chk_incident_alert_count"),
         Index("idx_incidents_status_last_seen", "status", "last_seen"),
         Index("idx_incidents_risk_last_seen", "risk_score", "last_seen"),
+        Index("idx_incidents_correlation_status", "correlation_key", "status"),
     )
+

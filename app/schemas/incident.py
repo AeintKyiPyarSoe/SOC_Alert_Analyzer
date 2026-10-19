@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.alert import AlertResponse
 
 class IncidentBase(BaseModel):
+    correlation_key: Optional[str] = None
     title: str
     description: str
     risk_score: int = Field(default=0, ge=0, le=100)

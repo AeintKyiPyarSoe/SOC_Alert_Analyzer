@@ -47,14 +47,22 @@ class IncidentCorrelator:
             grouped.setdefault(key, []).append(alert)
 
         affected_incidents: Dict[uuid.UUID, Incident] = {}
+        active_key_cache: Dict[str, Incident] = {}
 
         for key, group in grouped.items():
             clusters = cls._cluster_by_time(group, timedelta(seconds=window_seconds))
 
             for cluster in clusters:
-                incident = cls._merge_or_create_incident(db, cluster, window_seconds)
+                incident = cls._merge_or_create_incident(
+                    db=db,
+                    cluster=cluster,
+                    window_seconds=window_seconds,
+                    correlation_key=key,
+                    active_cache=active_key_cache
+                )
                 if incident:
                     affected_incidents[incident.id] = incident
+                    active_key_cache[key] = incident
 
         db.commit()
         return list(affected_incidents.values())
@@ -80,32 +88,48 @@ class IncidentCorrelator:
         cls,
         db: Session,
         cluster: List[Alert],
-        window_seconds: int
+        window_seconds: int,
+        correlation_key: str,
+        active_cache: Optional[Dict[str, Incident]] = None
     ) -> Optional[Incident]:
         """
-        Searches for an active OPEN incident matching this cluster's entity and event type
+        Searches for an active OPEN incident matching this cluster's structured correlation key
         whose timeframe is adjacent (within window_seconds).
         """
-        first_alert = cluster[0]
-        cluster_start = first_alert.timestamp
-        cluster_end = cluster[-1].timestamp
+        # 1. Check in-memory batch cache first to prevent duplicate incidents in same run
         window_delta = timedelta(seconds=window_seconds)
+        valid_ts = [a.timestamp for a in cluster if a.is_valid_timestamp]
+        cluster_start = min(valid_ts) if valid_ts else cluster[0].timestamp
+        cluster_end = max(valid_ts) if valid_ts else cluster[-1].timestamp
 
+        if active_cache and correlation_key in active_cache:
+            cached = active_cache[correlation_key]
+            if cached.status == "OPEN":
+                if (cached.last_seen >= cluster_start - window_delta and
+                        cached.first_seen <= cluster_end + window_delta):
+                    return cached
+
+        first_alert = cluster[0]
         src_label = first_alert.source_ip or first_alert.destination_ip or "Local Host"
         clean_event = first_alert.event_type.replace("_", " ").title()
         expected_title_prefix = f"{clean_event} Incident"
 
-        # Search open incidents matching event and source within time proximity
+        # 2. Query DB: Primary match via structured correlation_key, fallback to legacy title prefix
         candidates = (
             db.query(Incident)
             .filter(
                 Incident.status == "OPEN",
-                Incident.title.ilike(f"{expected_title_prefix}%"),
                 or_(
-                    Incident.title.contains(src_label),
-                    Incident.description.contains(src_label)
+                    Incident.correlation_key == correlation_key,
+                    and_(
+                        Incident.correlation_key.is_(None),
+                        Incident.title.ilike(f"{expected_title_prefix}%"),
+                        or_(
+                            Incident.title.contains(src_label),
+                            Incident.description.contains(src_label)
+                        )
+                    )
                 ),
-                # Time proximity: incident overlaps or sits within sliding window
                 Incident.last_seen >= cluster_start - window_delta,
                 Incident.first_seen <= cluster_end + window_delta
             )
@@ -120,22 +144,44 @@ class IncidentCorrelator:
         cls,
         db: Session,
         cluster: List[Alert],
-        window_seconds: int
+        window_seconds: int,
+        correlation_key: str,
+        active_cache: Optional[Dict[str, Incident]] = None
     ) -> Incident:
         first_alert = cluster[0]
-        cluster_first_seen = first_alert.timestamp
-        cluster_last_seen = cluster[-1].timestamp
+        
+        # Separate event timestamps from ingestion timestamps:
+        # Use strictly alerts with valid event timestamps to determine incident boundaries.
+        valid_timestamps = [a.timestamp for a in cluster if a.is_valid_timestamp]
+        if valid_timestamps:
+            cluster_first_seen = min(valid_timestamps)
+            cluster_last_seen = max(valid_timestamps)
+        else:
+            # All alerts had malformed/invalid event timestamps: fall back to ingestion timestamps
+            cluster_first_seen = min(a.created_at for a in cluster)
+            cluster_last_seen = max(a.created_at for a in cluster)
 
         is_external = IPClassifier.is_public_ip(first_alert.source_ip)
-        existing_incident = cls._find_matching_open_incident(db, cluster, window_seconds)
+        existing_incident = cls._find_matching_open_incident(
+            db=db,
+            cluster=cluster,
+            window_seconds=window_seconds,
+            correlation_key=correlation_key,
+            active_cache=active_cache
+        )
 
         if existing_incident:
             # -------------------------------------------------------------
             # Merge into existing incident
             # -------------------------------------------------------------
             incident = existing_incident
-            incident.first_seen = min(incident.first_seen, cluster_first_seen)
-            incident.last_seen = max(incident.last_seen, cluster_last_seen)
+            if not incident.correlation_key:
+                incident.correlation_key = correlation_key
+
+            # Only expand incident timeline if valid event timestamps exist
+            if valid_timestamps:
+                incident.first_seen = min(incident.first_seen, cluster_first_seen)
+                incident.last_seen = max(incident.last_seen, cluster_last_seen)
 
             # Link new alerts, preventing duplicate junction entries
             new_links = 0
@@ -212,6 +258,7 @@ class IncidentCorrelator:
 
             incident = Incident(
                 id=uuid.uuid4(),
+                correlation_key=correlation_key,
                 title=title,
                 description=description,
                 risk_score=final_risk,

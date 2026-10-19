@@ -2,12 +2,12 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-81%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Audited](https://img.shields.io/badge/security-RBAC%20%26%20Bandit%20Verified-blueviolet.svg?style=flat&logo=shield)](docs/acceptance_criteria.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.1.0-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.0-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Less noise. More clarity.**  
@@ -28,11 +28,19 @@
   * `ADMIN`: Full system control, database clearing, alert deletion, configuration management.
   * `ANALYST`: Log ingestion, incident/alert status updates, live host audits, and simulation drills.
   * `VIEWER`: Read-only access to dashboards, alerts, incidents, and threat statistics.
-* **Secrets Management**: Removed all hardcoded database credentials. Sensitive variables (`POSTGRES_PASSWORD`, `SECRET_KEY`, `ADMIN_API_KEY`, `ANALYST_API_KEY`) are dynamically loaded via environment variables and `.env`.
+* **Browser Session Authentication**:
+  * Implements secure `HttpOnly`, `SameSite=Lax` session cookie authentication (`/api/v1/auth/login`, `/api/v1/auth/logout`, `/api/v1/auth/me`).
+  * **Zero Privileged Secrets in Frontend**: API keys and master secrets are never injected into client-side JavaScript or HTML templates.
+  * **Interactive Auth Modal**: Users can securely authenticate or switch roles directly from the interface by clicking Nicole's avatar or via the settings dialog.
+  * **WebSocket Protection**: `/ws/threats` validates incoming handshake session cookies or ticket query tokens, closing unauthorized connections with policy violation code `1008`.
+* **Secrets Management**: Removed all hardcoded database credentials. Sensitive variables (`POSTGRES_PASSWORD`, `SECRET_KEY`, `ADMIN_API_KEY`, `ANALYST_API_KEY`) are dynamically loaded via environment variables and `.env`. In production mode, weak or default credentials cause immediate startup failure.
+* **First-Run Desktop Security**: Standalone desktop installations auto-generate cryptographically secure random API keys saved in `%LOCALAPPDATA%\SOC_Alert_Analyzer\.auth_credentials` with restricted user-only permissions (`0o600`).
 * **Container Hardening**: Docker container runs as an unprivileged, non-root user (`socuser:socgroup`). PostgreSQL ports are restricted to internal container networking and blocked from public host exposure.
 * **Ingestion Guardrails & File Security**:
   * Chunked streaming read with hard byte limits (default: 25 MB) preventing memory exhaustion / denial of service.
+  * Event volume capping (`MAX_EVENTS_PER_UPLOAD = 5000`) and batched database writes (`DB_BATCH_SIZE = 250`) protecting database connection pools.
   * Binary magic header validation (`MZ`, `ELF`, Mach-O, `PK`) rejecting malware or binaries disguised as text logs.
+  * XML external entity (XXE) defense using `defusedxml` parser.
   * Path traversal sanitization stripping directory escape sequences (`../`, `..\`).
   * Resilient parsing handling malformed JSON, truncated XML, and invalid encodings with descriptive `HTTP 422` responses instead of unhandled exceptions.
 
@@ -123,15 +131,15 @@ $$\text{Risk Score} = \text{clamp}\Big(\text{Base} + \text{FreqMod} + \text{Conf
 
 ## 🎯 Realistic Detection Scenarios & MITRE ATT&CK® Mapping
 
-| Scenario | Attack Type | MITRE ATT&CK Technique | Detection Mechanism | Accuracy | FP Rate |
-| :--- | :--- | :--- | :--- | :---: | :---: |
-| **1. Web Shell Execution** | Persistence / Execution | `T1505.003` Server Software Component: Web Shell | Parent-child analysis: `w3wp.exe`/`nginx` spawning `cmd.exe`/`bash` | **100%** | < 0.1% |
-| **2. Phishing Macro Execution** | Initial Access / Execution | `T1204.002` User Execution: Malicious File | Parent-child analysis: `winword.exe`/`excel.exe` spawning script hosts | **100%** | < 0.2% |
-| **3. LOLBin PowerShell Cradle** | Defense Evasion / Execution | `T1059.001` Command and Scripting: PowerShell | Parameter combination: `-enc` + `-w hidden` + `downloadstring` | **99.2%** | < 0.5% |
-| **4. Ransomware Backup Purge** | Impact / Inhibit Recovery | `T1490` Inhibit System Recovery | Process command checking: `vssadmin delete shadows` / `wmic` | **100%** | < 0.1% |
-| **5. Process Masquerading** | Defense Evasion | `T1036.005` Masquerading: Match Legitimate Name | Binary path validation: `svchost.exe` outside `%SystemRoot%\System32` | **100%** | < 0.1% |
-| **6. Inbound Brute Force** | Credential Access | `T1110.001` Brute Force: Password Guessing | Burst event correlation: Failed logons across 5-minute sliding window | **100%** | < 1.0% |
-| **7. Wildcard Port Exposure** | Discovery / Backdoor | `T1046` Network Service Discovery | Socket inspection: High-risk ports (4444, 1337, 3389) on `0.0.0.0` | **100%** | < 0.5% |
+| Scenario | Attack Type | MITRE ATT&CK Technique | Telemetry Triggers & Logic | Defensive Verification / Playbook |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Web Shell Execution** | Persistence / Execution | `T1505.003` Server Software Component: Web Shell | Parent-child lineage: `w3wp.exe`, `nginx`, `httpd` spawning `cmd.exe` or `powershell.exe` | Isolate web server, inspect `.aspx`/`.php` upload directories, dump process memory |
+| **2. Phishing Macro Execution** | Initial Access / Execution | `T1204.002` User Execution: Malicious File | Parent-child lineage: `winword.exe`, `excel.exe`, `outlook.exe` spawning script hosts (`cscript`, `powershell`) | Quarantine endpoint, extract email attachment, block sender domain at mail gateway |
+| **3. LOLBin PowerShell Cradle** | Defense Evasion / Execution | `T1059.001` Command and Scripting: PowerShell | Parameter heuristic: Base64 `-enc` + `-w hidden` + `downloadstring` cradle | Terminate PID, inspect PowerShell ScriptBlock logs (EID 4104), block remote IP |
+| **4. Ransomware Backup Purge** | Impact / Inhibit Recovery | `T1490` Inhibit System Recovery | Command execution: `vssadmin delete shadows`, `wmic shadowcopy delete`, `wbadmin` | Trigger emergency host isolation, revoke administrative token, verify offline backups |
+| **5. Process Masquerading** | Defense Evasion | `T1036.005` Masquerading: Match Legitimate Name | Binary path validation: System binaries (`svchost.exe`, `lsass.exe`) running outside `%SystemRoot%\System32` | Kill anomalous process, compute binary SHA-256 hash, query VirusTotal IOC database |
+| **6. Inbound Brute Force** | Credential Access | `T1110.001` Brute Force: Password Guessing | Burst correlation: ≥5 failed authentication events (EID 4625 / Linux PAM) within 300s window | Add source IP to firewall drop list, check for subsequent successful logon (EID 4624) |
+| **7. Wildcard Port Exposure** | Discovery / Backdoor | `T1046` Network Service Discovery | Socket inspection: High-risk listening ports (FTP 21, Telnet 23, 4444, 1337, 3389) bound to `0.0.0.0` | Identify listener process via `netstat -ano`, close unauthorized service, re-apply firewall |
 
 ---
 
@@ -190,9 +198,68 @@ $$\text{Risk Score} = \text{clamp}\Big(\text{Base} + \text{FreqMod} + \text{Conf
 
 ---
 
-## 🚀 Quickstart & Installation
+## 🚀 Deployment & Installation Modes
 
-### Option 1: Run with Python (Recommended for Development)
+SOC Alert Analyzer supports three distinct deployment profiles tailored for different operational needs:
+
+### Comparison of Deployment Models
+
+| Feature / Capability | Standalone Windows Executable (.exe) | Docker Compose Deployment | Source / Python Virtualenv |
+| :--- | :--- | :--- | :--- |
+| **Primary Use Case** | Local analyst workstation / Host EDR audit | Multi-analyst team SIEM / Centralized SOC | Codebase customization & development |
+| **Supported OS** | Windows 10, 11, Server 2019/2022 (x64) | Linux (Ubuntu, Debian, RHEL), macOS, Windows | Linux, macOS, Windows |
+| **Local Host Telemetry** | Full native `psutil` & Windows Event Log audit | Container-scoped metrics (isolated by Docker) | Full native host access |
+| **Database Engine** | Embedded SQLite with WAL mode | PostgreSQL 16 on internal bridge network | SQLite (default) or external PostgreSQL |
+| **Default Network Binding**| `127.0.0.1:8000` (Strict Loopback Only) | Port 8000 (Bridge internal `soc_internal_net`)| Configurable (default `127.0.0.1:8000`) |
+| **Secrets Management** | Auto-generated on 1st run in `%LOCALAPPDATA%` | Enforced non-default environment variables | `.env` or system environment variables |
+
+---
+
+### Option 1: Standalone Windows Executable (`.exe`)
+
+The fastest way to run on a clean Windows workstation with **zero Python or compiler installation required**:
+
+1. Download **`SOC_Alert_Analyzer.exe`** and **`SHA256SUMS.txt`** from [Releases](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
+2. Verify the release checksum in PowerShell:
+   ```powershell
+   python -c "import hashlib; print(hashlib.sha256(open('SOC_Alert_Analyzer.exe', 'rb').read()).hexdigest())"
+   ```
+3. Double-click **`SOC_Alert_Analyzer.exe`** or run from PowerShell:
+   ```powershell
+   .\SOC_Alert_Analyzer.exe
+   ```
+4. **Security & Data Isolation**:
+   * **Safe Local Storage**: Databases, logs, and authentication keys are written to `%LOCALAPPDATA%\SOC_Alert_Analyzer`, ensuring persistent storage that never resides in temporary unpack directories (`_MEIxxxxxx`).
+   * **First-Run Random Credentials**: On initial execution, unique random administrative and analyst API keys are automatically generated and saved to `%LOCALAPPDATA%\SOC_Alert_Analyzer\.auth_credentials` with user-only permissions (`0o600`).
+   * **Network Safety**: Binds to `127.0.0.1` by default to prevent exposing the triage console to untrusted networks.
+5. **Antivirus Heuristic Notes**:
+   Because the executable is packaged using PyInstaller without an enterprise code-signing certificate, certain consumer antivirus solutions may display generic heuristic or SmartScreen warnings (e.g., "Unknown Publisher" or "Heur.BZC"). This is expected behavior for unsigned Python-compiled binaries. You can verify the authentic SHA-256 hash against `SHA256SUMS.txt` or compile directly from source.
+
+---
+
+### Option 2: Docker Compose (Production Hardened)
+
+Recommended for team deployments and central log aggregation:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
+cd SOC_Alert_Analyzer
+
+# 2. Configure production environment secrets (mandatory)
+cp .env.example .env
+# Edit .env and set secure values for POSTGRES_PASSWORD, SECRET_KEY, and ADMIN_API_KEY
+
+# 3. Launch isolated container stack
+docker compose up --build -d
+```
+* PostgreSQL is isolated on internal docker bridge network `soc_internal_net` and is **not exposed** to host ports.
+* The web application runs as an unprivileged, non-root user (`socuser:socgroup`).
+* In production mode, the application aborts startup immediately if default passwords or keys are detected.
+
+---
+
+### Option 3: Run from Source (Python Development)
 
 ```powershell
 # 1. Clone repository
@@ -210,24 +277,11 @@ python launcher.py
 ```
 Open your browser to `http://127.0.0.1:8000`.
 
-### Option 2: Docker Compose (Production Hardened)
-
-```powershell
-docker compose up --build
-```
-* PostgreSQL is isolated on internal docker bridge network `soc_internal_net`.
-* Web app runs as unprivileged `socuser` on port 8000.
-
-### Option 3: Standalone Windows Executable
-
-1. Download **`SOC_Alert_Analyzer.exe`** from [Releases](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
-2. Double-click to run. Automatically provisions a local database and launches your browser.
-
 ---
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains **70 automated pytest test cases** verifying all defensive security logic:
+The repository maintains **81 automated pytest test cases** verifying all defensive security logic:
 
 ```powershell
 python -m pytest -v
@@ -272,7 +326,9 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 ```text
 ├── .github/
 │   └── workflows/
-│       └── ci.yml            # Multi-OS test & security audit pipeline
+│       ├── ci.yml            # Multi-OS test & security audit pipeline
+│       └── release-exe.yml   # Automated Windows EXE build, smoke test & release pipeline
+├── alembic/                  # Database migration scripts and schema versioning
 ├── app/
 │   ├── api/
 │   │   └── routes.py         # REST endpoints with RBAC & SQL aggregation
@@ -299,11 +355,12 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 │   └── templates/            # Jinja2 dashboard, alerts, incidents, and investigation views
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
-├── tests/                    # 70 automated pytest tests covering all subsystems
+├── tests/                    # 81 automated pytest tests covering all subsystems
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file
 ├── launcher.py               # One-click browser & Uvicorn launcher
+├── SOC_Alert_Analyzer.spec   # PyInstaller standalone executable specification
 └── README.md
 ```
 
@@ -311,9 +368,10 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 
 ## ⚠️ Limitations & Defensive Operational Boundaries
 
-1. **Host Sensor Scope**: The host sensor functions as an EDR-Lite behavioral auditor via `psutil` and OS event logs. In high-security production deployments, it should be paired with kernel-level sensors (e.g. Sysmon, eBPF, CrowdStrike, or Wazuh Agent).
+1. **Host Sensor Scope & User Permissions**: The host sensor functions as an EDR-Lite behavioral auditor via `psutil` and OS event logs. When executed without elevated administrator privileges, process inspection is limited to processes owned by the current user account, and access to privileged security event channels (e.g. Windows Security EID 4625/4688) may be restricted by Windows OS access control. For complete host-wide behavioral visibility, run the terminal or application as an Administrator. In production enterprise deployments, pair with kernel-level sensors (e.g. Sysmon, eBPF, CrowdStrike, or Wazuh Agent).
 2. **Correlation Window**: By default, the correlation window is set to 300 seconds (5 minutes). Extended low-and-slow adversary campaigns spanning hours or days should be tuned via `CORRELATION_WINDOW_SECONDS` or queried using historical SIEM search.
 3. **Log Formats**: While generic CSV, JSON, Apache, Syslog, Suricata, and Windows XML/JSON logs are natively parsed, custom binary event logs (`.evtx`) should be exported to XML or JSON before ingestion.
+4. **Standalone Packaging & Antivirus Heuristics**: Standalone single-file executables created by PyInstaller bundle Python and shared C libraries into a self-extracting archive. Machine learning antivirus engines without vendor signatures may occasionally flag newly generated binaries with generic warnings. Release integrity should always be verified against the published SHA-256 checksum in `SHA256SUMS.txt`.
 
 ---
 

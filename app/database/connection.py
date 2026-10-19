@@ -48,5 +48,13 @@ def init_db():
                 if "telemetry_origin" not in existing_cols and len(existing_cols) > 0:
                     conn.execute(text("ALTER TABLE alerts ADD COLUMN telemetry_origin VARCHAR(32) DEFAULT 'HISTORICAL_LOG'"))
                     logger.info("Migrated SQLite: added column 'telemetry_origin' to alerts.")
+
+                # Check columns in incidents table
+                res_inc = conn.execute(text("PRAGMA table_info(incidents)")).fetchall()
+                existing_inc_cols = {row[1] for row in res_inc}
+                if "correlation_key" not in existing_inc_cols and len(existing_inc_cols) > 0:
+                    conn.execute(text("ALTER TABLE incidents ADD COLUMN correlation_key VARCHAR(128)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_incidents_correlation_key ON incidents (correlation_key)"))
+                    logger.info("Migrated SQLite: added column 'correlation_key' to incidents.")
         except Exception as e:
             logger.debug(f"Migration check skipped: {e}")

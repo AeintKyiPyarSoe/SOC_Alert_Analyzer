@@ -132,11 +132,10 @@
         submitBtn.disabled = true;
 
         try {
-            const uploadHeaders = {};
-            if (window.SOC_API_KEY) uploadHeaders['X-API-Key'] = window.SOC_API_KEY;
             const resp = await fetch('/api/v1/alerts/upload', {
                 method: 'POST',
-                headers: uploadHeaders,
+                credentials: 'same-origin',
+                headers: getApiHeaders(),
                 body: formData
             });
             const data = await resp.json();
@@ -177,11 +176,10 @@
     async function loadSampleDataset(type) {
         showToast(`Loading sample ${type} telemetry...`);
         try {
-            const sampleHeaders = {};
-            if (window.SOC_API_KEY) sampleHeaders['X-API-Key'] = window.SOC_API_KEY;
             const resp = await fetch(`/api/v1/sample-data/load/${type}`, {
                 method: 'POST',
-                headers: sampleHeaders
+                credentials: 'same-origin',
+                headers: getApiHeaders()
             });
             const data = await resp.json();
             if (resp.ok) {

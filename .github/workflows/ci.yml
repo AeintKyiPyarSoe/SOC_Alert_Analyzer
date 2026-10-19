@@ -62,8 +62,9 @@ jobs:
 
       - name: Dependency Security Audit (pip-audit)
         run: |
-          pip-audit --desc on || echo "Security scan completed with non-blocking audit findings."
+          pip-audit -r requirements.txt --desc on
 
       - name: Static AST Application Security Analysis (bandit)
         run: |
-          bandit -r app/ -ll -ii -x app/static || echo "Static AST security scan completed."
+          bandit -r app/ -ll -ii -x app/static
+

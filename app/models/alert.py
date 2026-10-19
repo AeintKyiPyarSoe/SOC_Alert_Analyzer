@@ -1,11 +1,16 @@
+from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import (
     String, Integer, Boolean, Text, DateTime, CheckConstraint, Index, Uuid
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.connection import Base
+
+if TYPE_CHECKING:
+    from app.models.incident import Incident
+
 
 class Alert(Base):
     __tablename__ = "alerts"
@@ -43,7 +48,7 @@ class Alert(Base):
     )
 
     # Relationship to Incidents via junction table
-    incidents: Mapped[List["Incident"]] = relationship(
+    incidents: Mapped[List[Incident]] = relationship(
         secondary="incident_alerts", back_populates="alerts"
     )
 

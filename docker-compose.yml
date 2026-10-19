@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-soc_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_dev_password_change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be configured in .env file}
       POSTGRES_DB: ${POSTGRES_DB:-soc_alert_db}
     # Security: Restrict direct database exposure to host. Database is only accessible
     # on the internal Docker network. Uncomment 127.0.0.1:5432 only for local debugging.
@@ -30,14 +30,15 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-soc_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_dev_password_change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be configured in .env file}
       POSTGRES_DB: ${POSTGRES_DB:-soc_alert_db}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-soc-admin-key-default-2026}
-      ANALYST_API_KEY: ${ANALYST_API_KEY:-soc-analyst-key-default-2026}
-      SECRET_KEY: ${SECRET_KEY:-soc-insecure-secret-key-change-in-production-2026}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Error: ADMIN_API_KEY must be configured in .env file}
+      ANALYST_API_KEY: ${ANALYST_API_KEY:?Error: ANALYST_API_KEY must be configured in .env file}
+      SECRET_KEY: ${SECRET_KEY:?Error: SECRET_KEY must be configured in .env file}
+      DEMO_MODE: ${DEMO_MODE:-false}
       CORRELATION_WINDOW_SECONDS: ${CORRELATION_WINDOW_SECONDS:-300}
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-25}
     ports:

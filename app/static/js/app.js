@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadInitialRealHostAlerts();
     initEventHandlers();
     initThreatStream();
+    checkAuthStatus();
     renderAll();
 });
 
@@ -86,16 +87,35 @@ function loadInitialRealHostAlerts() {
 
 function getApiHeaders(extraHeaders = {}) {
     const headers = { ...extraHeaders };
-    const key = window.SOC_API_KEY || localStorage.getItem('soc_api_key') || 'soc-admin-key-default-2026';
+    const key = sessionStorage.getItem('soc_api_key') || localStorage.getItem('soc_api_key');
     if (key) {
         headers['X-API-Key'] = key;
     }
     return headers;
 }
 
+async function apiFetch(url, options = {}) {
+    const opts = {
+        credentials: 'same-origin',
+        ...options,
+        headers: getApiHeaders(options.headers || {})
+    };
+    try {
+        const resp = await fetch(url, opts);
+        if (resp.status === 401) {
+            showToast('⚠️ Authentication Required: Click Nicole\'s avatar in header to authenticate.', 'warning');
+        } else if (resp.status === 403) {
+            showToast('⛔ Permission Denied: Current role does not permit this action.', 'error');
+        }
+        return resp;
+    } catch (e) {
+        throw e;
+    }
+}
+
 async function fetchAlertsFromApi() {
     try {
-        const resp = await fetch('/api/v1/alerts?limit=100', { headers: getApiHeaders() });
+        const resp = await apiFetch('/api/v1/alerts?limit=100');
         if (resp.ok) {
             const data = await resp.json();
             if (data.length > 0) {
@@ -172,7 +192,9 @@ let threatSocket = null;
 
 function initThreatStream() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/threats`;
+    const key = sessionStorage.getItem('soc_api_key') || localStorage.getItem('soc_api_key');
+    const query = key ? `?token=${encodeURIComponent(key)}` : '';
+    const wsUrl = `${protocol}//${window.location.host}/ws/threats${query}`;
 
     const liveText = document.getElementById('live-sensor-text');
 
@@ -201,7 +223,11 @@ function initThreatStream() {
             }
         };
 
-        threatSocket.onclose = () => {
+        threatSocket.onclose = (e) => {
+            if (e.code === 1008) {
+                if (liveText) liveText.textContent = 'HOST SENSOR: AUTH REQUIRED';
+                return;
+            }
             if (liveText) liveText.textContent = 'HOST SENSOR: RECONNECTING';
             setTimeout(initThreatStream, 4000);
         };
@@ -1102,8 +1128,82 @@ function openHelpModal() {
     if (backdrop) backdrop.classList.add('open');
 }
 
+function openAuthModal() {
+    const modal = document.getElementById('auth-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        checkAuthStatus();
+    }
+}
+
+function closeAuthModal() {
+    const modal = document.getElementById('auth-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function checkAuthStatus() {
+    const display = document.getElementById('auth-status-display');
+    try {
+        const resp = await apiFetch('/api/v1/auth/me');
+        if (resp && resp.ok) {
+            const data = await resp.json();
+            if (display) {
+                display.textContent = `${data.role} (${data.username})${data.demo_mode ? ' • DEMO' : ''}`;
+                display.style.color = (data.role === 'ADMIN') ? 'var(--accent-mint)' : (data.role === 'ANALYST') ? '#60a5fa' : 'var(--text-muted)';
+            }
+        }
+    } catch (e) {
+        if (display) display.textContent = 'Disconnected';
+    }
+}
+
+async function submitAuthKey() {
+    const input = document.getElementById('auth-key-input');
+    const key = input ? input.value.trim() : '';
+    if (!key) {
+        showToast('Please enter an API key', 'warning');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: key })
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            sessionStorage.setItem('soc_api_key', key);
+            showToast(`✅ Authenticated successfully as ${data.role}!`, 'success');
+            if (input) input.value = '';
+            closeAuthModal();
+            checkAuthStatus();
+            // Re-init WebSocket with new token
+            if (typeof initThreatStream === 'function') initThreatStream();
+        } else {
+            const err = await resp.json();
+            showToast(`❌ Authentication failed: ${err.detail || 'Invalid key'}`, 'error');
+        }
+    } catch (e) {
+        showToast(`❌ Connection error: ${e.message}`, 'error');
+    }
+}
+
+async function clearAuthKey() {
+    sessionStorage.removeItem('soc_api_key');
+    localStorage.removeItem('soc_api_key');
+    try {
+        await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch (e) {}
+    showToast('Logged out of session.', 'info');
+    checkAuthStatus();
+    closeAuthModal();
+}
+
 function closeAllModals() {
-    document.querySelectorAll('.modal-backdrop').forEach((m) => m.classList.remove('open'));
+    document.querySelectorAll('.modal-backdrop, .modal-dialog-backdrop').forEach((m) => {
+        m.classList.remove('open');
+        m.style.display = 'none';
+    });
 }
 
 function resetDemo() {

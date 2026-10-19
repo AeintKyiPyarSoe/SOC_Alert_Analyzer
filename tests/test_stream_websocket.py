@@ -3,12 +3,23 @@ import asyncio
 from unittest.mock import AsyncMock
 from app.security.stream import ThreatStreamManager
 
+from starlette.websockets import WebSocketDisconnect
+from app.config import settings
+
 def test_websocket_ping_pong(client):
-    with client.websocket_connect("/ws/threats") as ws:
+    client.cookies["soc_api_key"] = settings.ADMIN_API_KEY
+    with client.websocket_connect(f"/ws/threats?token={settings.ADMIN_API_KEY}") as ws:
         # Send keepalive ping
         ws.send_text("ping")
         data = ws.receive_text()
         assert data == "pong"
+
+def test_websocket_unauthenticated_rejected(unauthenticated_client):
+    # Unauthenticated remote websocket connection should be rejected with 1008 Policy Violation
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with unauthenticated_client.websocket_connect("/ws/threats") as ws:
+            ws.receive_text()
+    assert exc_info.value.code == 1008
 
 def test_websocket_broadcast_with_origin_tag():
     manager = ThreatStreamManager()
