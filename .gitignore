@@ -9,6 +9,9 @@ __pycache__/
 *.sqlite3
 soc_alerts.db
 uploads/
+.env
+.env.local
+.env.*.local
 
 # Virtual environments
 .venv/

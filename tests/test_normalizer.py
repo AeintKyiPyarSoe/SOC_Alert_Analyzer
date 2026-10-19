@@ -28,6 +28,7 @@ def test_normalize_alert():
     assert norm["severity"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     assert isinstance(norm["risk_score"], int)
     assert 0 <= norm["risk_score"] <= 100
+    assert norm["is_valid_timestamp"] is True
 
 def test_normalize_invalid_fields():
     raw_event = {
@@ -42,3 +43,23 @@ def test_normalize_invalid_fields():
     assert norm["source_ip"] is None
     assert norm["source_port"] is None
     assert isinstance(norm["timestamp"], datetime)
+    # Invalid timestamp must be explicitly identified rather than silently ignored
+    assert norm["is_valid_timestamp"] is False
+    assert "[INVALID_TIMESTAMP_DETECTED" in norm["raw_log"]
+
+def test_normalize_multi_format_timestamps():
+    # 1. Syslog format
+    r_syslog = AlertNormalizer.normalize({"timestamp": "Sep 10 10:00:00", "description": "test"})
+    assert r_syslog["is_valid_timestamp"] is True
+
+    # 2. Apache format
+    r_apache = AlertNormalizer.normalize({"timestamp": "10/Sep/2026:10:00:00 +0000", "description": "test"})
+    assert r_apache["is_valid_timestamp"] is True
+
+    # 3. Numeric Epoch timestamp
+    r_epoch = AlertNormalizer.normalize({"timestamp": 1725962400, "description": "test"})
+    assert r_epoch["is_valid_timestamp"] is True
+
+    # 4. Null / Missing timestamp explicitly marked invalid
+    r_null = AlertNormalizer.normalize({"timestamp": None, "description": "test"})
+    assert r_null["is_valid_timestamp"] is False

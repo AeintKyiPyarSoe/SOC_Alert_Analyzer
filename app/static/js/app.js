@@ -84,9 +84,18 @@ function loadInitialRealHostAlerts() {
     }
 }
 
+function getApiHeaders(extraHeaders = {}) {
+    const headers = { ...extraHeaders };
+    const key = window.SOC_API_KEY || localStorage.getItem('soc_api_key') || 'soc-admin-key-default-2026';
+    if (key) {
+        headers['X-API-Key'] = key;
+    }
+    return headers;
+}
+
 async function fetchAlertsFromApi() {
     try {
-        const resp = await fetch('/api/v1/alerts?limit=100');
+        const resp = await fetch('/api/v1/alerts?limit=100', { headers: getApiHeaders() });
         if (resp.ok) {
             const data = await resp.json();
             if (data.length > 0) {
@@ -866,7 +875,7 @@ async function toggleAlertReviewStatus(alertId) {
     try {
         await fetch(`/api/v1/alerts/${alertId}/status`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ status: newStatus })
         });
     } catch (e) {
@@ -882,10 +891,13 @@ async function toggleAlertReviewStatus(alertId) {
 async function runHostAudit() {
     showToast('🛡️ Running comprehensive host security audit...');
     try {
-        const resp = await fetch('/api/v1/host/audit', { method: 'POST' });
+        const resp = await fetch('/api/v1/host/audit', {
+            method: 'POST',
+            headers: getApiHeaders()
+        });
         const data = await resp.json();
         if (resp.ok) {
-            showToast(`Audit finished: ${data.alerts_created} host findings recorded.`);
+            showToast(`Audit finished: ${data.findings_count || data.alerts_created || 0} host findings recorded.`);
             // Fetch updated alerts
             await fetchAlertsFromApi();
         } else {
@@ -899,11 +911,16 @@ async function runHostAudit() {
 async function runTestDrill() {
     showToast('🎯 Triggering test security drill...');
     try {
-        const resp = await fetch('/api/v1/host/drill', { method: 'POST' });
+        const resp = await fetch('/api/v1/host/drill', {
+            method: 'POST',
+            headers: getApiHeaders()
+        });
         const data = await resp.json();
         if (resp.ok) {
             showToast('Test drill injected successfully.');
             await fetchAlertsFromApi();
+        } else {
+            showToast(`Drill failed: ${data.detail || 'Error'}`);
         }
     } catch (e) {
         showToast('Drill request dispatched.');
@@ -914,7 +931,10 @@ async function clearAllAlerts() {
     if (!confirm('Clear historical alerts and re-scan host for active findings?')) return;
     showToast('Clearing alert history...');
     try {
-        const resp = await fetch('/api/v1/alerts/clear', { method: 'POST' });
+        const resp = await fetch('/api/v1/alerts/clear', {
+            method: 'POST',
+            headers: getApiHeaders()
+        });
         const data = await resp.json();
         if (resp.ok) {
             SOC_STATE.sessionReviewed.clear();
@@ -922,6 +942,8 @@ async function clearAllAlerts() {
             saveSessionStorage();
             showToast(data.message || 'Alert history cleared and re-scanned.');
             await fetchAlertsFromApi();
+        } else {
+            showToast(`Clear failed: ${data.detail || 'Permission denied'}`);
         }
     } catch (e) {
         showToast('Clear request dispatched.');
@@ -933,7 +955,10 @@ async function toggleSimulation() {
     const btn = document.getElementById('btn-toggle-sim');
 
     try {
-        await fetch(`/api/v1/stream/toggle?active=${SOC_STATE.isSimulationActive}`, { method: 'POST' });
+        await fetch(`/api/v1/stream/toggle?active=${SOC_STATE.isSimulationActive}`, {
+            method: 'POST',
+            headers: getApiHeaders()
+        });
         if (btn) {
             btn.textContent = SOC_STATE.isSimulationActive ? '⚡ Sensor: ON' : '⏸️ Sensor: PAUSED';
             btn.classList.toggle('btn-outline', SOC_STATE.isSimulationActive);
@@ -1036,6 +1061,7 @@ async function parsePlaygroundData() {
 
         const resp = await fetch('/api/v1/alerts/upload', {
             method: 'POST',
+            headers: getApiHeaders(),
             body: formData
         });
         const data = await resp.json();

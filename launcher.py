@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import socket
+import argparse
 import webbrowser
 import threading
 import multiprocessing
@@ -20,26 +21,56 @@ else:
 sys.path.insert(0, str(BASE_DIR))
 
 import uvicorn
+from app.config import settings
 from app.main import app
 
-def find_available_port(start_port: int = 8000) -> int:
-    """Find an available port starting from start_port."""
-    port = start_port
-    while port < start_port + 100:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(("127.0.0.1", port)) != 0:
-                return port
-        port += 1
+def is_port_available(host: str, port: int) -> bool:
+    """Checks whether a TCP port is open and available for binding."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        # 127.0.0.1 check for local connections
+        check_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+        return s.connect_ex((check_host, port)) != 0
+
+def find_available_port(host: str, start_port: int = 8000, max_attempts: int = 100) -> int:
+    """Finds an available TCP port starting from start_port."""
+    for port in range(start_port, start_port + max_attempts):
+        if is_port_available(host, port):
+            return port
     return start_port
 
-def open_browser_delayed(url: str, delay: float = 1.5):
-    """Wait for server to boot then open default web browser."""
-    time.sleep(delay)
-    print(f"[+] Opening web browser at {url} ...")
-    webbrowser.open(url)
+def wait_for_server_and_open_browser(host: str, port: int, max_wait: float = 10.0):
+    """
+    Polls the server until it is accepting TCP connections,
+    then launches the system's default web browser.
+    """
+    check_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    url = f"http://{check_host}:{port}"
+    start_time = time.time()
 
-def print_banner(url: str):
-    banner = f"""
+    while time.time() - start_time < max_wait:
+        if not is_port_available(host, port):
+            # Port is now bound and listening
+            time.sleep(0.3)
+            print(f"[+] Server confirmed active. Opening web browser at {url} ...")
+            try:
+                webbrowser.open(url)
+            except Exception as e:
+                print(f"[!] Note: Automatic browser launch failed: {e}. Please open {url} manually.")
+            return
+        time.sleep(0.2)
+
+    print(f"[!] Server readiness check timed out. Please navigate to {url} manually.")
+
+def print_banner(host: str, port: int):
+    check_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    url = f"http://{check_host}:{port}"
+    docs_url = f"{url}/docs"
+
+    db_type = "PostgreSQL" if "postgresql" in settings.DATABASE_URL.lower() else "SQLite (Local File)"
+    auth_status = "ENABLED (RBAC)" if settings.AUTH_ENABLED else "DISABLED (Dev Mode)"
+
+    banner = rf"""
 ================================================================
    ____   ___   ____     _    _           _       
   / ___| / _ \ / ___|   / \  | | ___ _ __| |_ ___ 
@@ -47,39 +78,120 @@ def print_banner(url: str):
    ___) | |_| | |___  / ___ \| |  __/ |  | |_\__ \\
   |____/ \___/ \____|/_/   \_\_|\___|_|   \__|___/
                      
-  Real-World Defensive Security Operations Center & Alert Analyzer
+  Defensive Security Operations Center & Real-Time EDR Analyzer
 ================================================================
   [+] Web Dashboard  : {url}
-  [+] Host Sensor    : Native EDR (Windows / Linux / macOS)
-  [+] Threat Feed    : Real-Time Host Telemetry Active
-  [+] Multi-Source   : Windows Event Logs, Web Access, Firewall,
-                       Wazuh, Suricata, Linux Auth, Generic CSV/JSON
-  [+] Framework      : MITRE ATT&CK Enterprise Mapping
+  [+] API Swagger UI : {docs_url}
+  [+] Database Engine: {db_type}
+  [+] Authentication : {auth_status}
+  [+] Host Sensor    : Native EDR-Lite (Process Trees, Sockets, LOLBins)
+  [+] MITRE ATT&CK   : Enterprise v14 Mappings Active
 ================================================================
-  INFO: Running in standalone real-world mode (no SIEM required).
-  Keep this window open while using the application.
+  INFO: Running in standalone defensive mode.
   Press Ctrl+C to terminate the server.
 ================================================================
 """
     print(banner)
 
+def parse_arguments():
+    """Parses command-line arguments for configurable execution."""
+    parser = argparse.ArgumentParser(
+        description="SOC Alert Analyzer — Defensive Security Operations Center Launcher"
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default=os.getenv("HOST", "127.0.0.1"),
+        help="Host interface to bind the web server (default: 127.0.0.1 or env HOST)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("PORT", "8000")),
+        help="Port to bind the web server (default: 8000 or env PORT)"
+    )
+    parser.add_argument(
+        "--strict-port",
+        action="store_true",
+        help="Fail if the designated port is already occupied instead of searching next available"
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Disable automatic launch of the web browser (useful for headless, Docker, or CI)"
+    )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable Uvicorn auto-reload for local code development"
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="info",
+        choices=["critical", "error", "warning", "info", "debug", "trace"],
+        help="Uvicorn server log level (default: info)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of worker processes (default: 1)"
+    )
+    return parser.parse_args()
+
 def main():
     multiprocessing.freeze_support()
-    port = find_available_port(8000)
-    url = f"http://127.0.0.1:{port}"
+    args = parse_arguments()
 
-    print_banner(url)
+    host = args.host
+    requested_port = args.port
 
-    # Launch browser automatically in background thread
-    threading.Thread(target=open_browser_delayed, args=(url,), daemon=True).start()
+    if args.strict_port:
+        if not is_port_available(host, requested_port):
+            print(f"[!] Error: Port {requested_port} is already occupied on {host}.")
+            sys.exit(1)
+        port = requested_port
+    else:
+        port = find_available_port(host, start_port=requested_port)
+        if port != requested_port:
+            print(f"[*] Port {requested_port} was occupied; dynamically allocated available port {port}.")
 
-    # Run Uvicorn server with app instance
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="info"
-    )
+    print_banner(host, port)
+
+    # Launch browser only after verified server readiness (unless suppressed)
+    if not args.no_browser and not os.getenv("NO_BROWSER"):
+        browser_thread = threading.Thread(
+            target=wait_for_server_and_open_browser,
+            args=(host, port),
+            daemon=True
+        )
+        browser_thread.start()
+
+    try:
+        if args.reload:
+            uvicorn.run(
+                "app.main:app",
+                host=host,
+                port=port,
+                log_level=args.log_level,
+                reload=True
+            )
+        else:
+            uvicorn.run(
+                app,
+                host=host,
+                port=port,
+                log_level=args.log_level,
+                workers=args.workers
+            )
+    except KeyboardInterrupt:
+        print("\n[!] Received shutdown signal (Ctrl+C). Terminating SOC Alert Analyzer gracefully...")
+    except Exception as e:
+        print(f"\n[!] Server error: {e}")
+        sys.exit(1)
+    finally:
+        print("[+] SOC Alert Analyzer stopped.")
 
 if __name__ == "__main__":
     main()

@@ -1,46 +1,57 @@
-import ipaddress
+import re
+import email.utils
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
+
 from app.security.mitre_mapper import MitreMapper
 from app.security.risk_engine import RiskEngine
+from app.security.ip_utils import IPClassifier
 
 class AlertNormalizer:
     """Normalizes raw parsed event dictionaries into canonical Alert entities."""
 
+    # Attack signature terms evaluated with boundary checking
+    ATTACK_SIGNATURE_PATTERNS = [
+        r"\bbrute\b", r"\bcve-\d{4}-\d+\b", r"\bexploit\b", r"\bunauthorized\b",
+        r"\bscan\b", r"\bpowershell\b", r"\bbackdoor\b", r"\bmimikatz\b",
+        r"\bchisel\b", r"\bransomware\b", r"\bsql injection\b", r"\bxss\b"
+    ]
+
+    PRIVILEGED_USERS = {"root", "admin", "administrator", "system", "sa"}
+
     @classmethod
     def normalize(cls, raw_event: Dict[str, Any]) -> Dict[str, Any]:
         source_type = raw_event.get("source_type", "Unknown")
+        telemetry_origin = raw_event.get("telemetry_origin") or cls._infer_telemetry_origin(source_type, raw_event)
         event_type = raw_event.get("event_type", "security_anomaly")
         description = raw_event.get("description", "Security Event Detected")
 
-        # Normalize Timestamp
-        timestamp = cls._normalize_timestamp(raw_event.get("timestamp"))
+        # Normalize Timestamp and explicitly identify validity
+        timestamp, is_valid_timestamp = cls._normalize_timestamp(raw_event.get("timestamp"))
 
-        # Sanitize IP addresses
-        source_ip = cls._sanitize_ip(raw_event.get("source_ip"))
-        destination_ip = cls._sanitize_ip(raw_event.get("destination_ip"))
+        # Sanitize and validate IP addresses using IPClassifier
+        source_ip = IPClassifier.sanitize_ip(raw_event.get("source_ip"))
+        destination_ip = IPClassifier.sanitize_ip(raw_event.get("destination_ip"))
 
         # Sanitize Ports
         source_port = cls._sanitize_port(raw_event.get("source_port"))
         destination_port = cls._sanitize_port(raw_event.get("destination_port"))
 
-        # Determine external IP exposure
-        is_external = False
-        if source_ip:
-            try:
-                ip_obj = ipaddress.ip_address(source_ip)
-                is_external = not (ip_obj.is_private or ip_obj.is_loopback)
-            except ValueError:
-                pass
+        # Determine true public external exposure
+        is_external = IPClassifier.is_public_ip(source_ip)
 
-        # Check for known attack signatures in description
+        # Check for attack signatures with word-boundary matching to prevent false positives
         desc_lower = description.lower()
-        is_known_signature = any(kw in desc_lower for kw in [
-            "brute", "cve", "exploit", "unauthorized", "scan", "powershell", "backdoor"
-        ])
+        is_known_signature = any(
+            re.search(pat, desc_lower) for pat in cls.ATTACK_SIGNATURE_PATTERNS
+        )
+
+        # Check privileged user context
+        username = raw_event.get("username")
+        is_privileged = bool(username and username.strip().lower() in cls.PRIVILEGED_USERS)
 
         # Map MITRE ATT&CK technique
-        mitre_technique = MitreMapper.map_event(event_type, description)
+        mitre_technique = raw_event.get("mitre_technique") or MitreMapper.map_event(event_type, description)
 
         # Calculate Risk Score & Severity
         raw_level = raw_event.get("rule_level") or raw_event.get("suricata_severity")
@@ -48,64 +59,134 @@ class AlertNormalizer:
             event_type=event_type,
             source_type=source_type,
             raw_level=raw_level,
-            frequency_count=1,
+            frequency_count=raw_event.get("frequency_count", 1),
             is_external_ip=is_external,
-            is_known_attack_signature=is_known_signature
+            is_known_attack_signature=is_known_signature,
+            is_privileged_user=is_privileged
         )
+
+        raw_log = raw_event.get("raw_log")
+        if not is_valid_timestamp:
+            raw_log = f"[INVALID_TIMESTAMP_DETECTED: original='{raw_event.get('timestamp')}']\n{raw_log or ''}".strip()
 
         return {
             "timestamp": timestamp,
+            "is_valid_timestamp": is_valid_timestamp,
             "source_type": source_type,
+            "telemetry_origin": telemetry_origin,
             "event_type": event_type,
             "description": description,
             "source_ip": source_ip,
             "destination_ip": destination_ip,
             "source_port": source_port,
             "destination_port": destination_port,
-            "username": raw_event.get("username"),
+            "username": username,
             "severity": severity,
             "risk_score": risk_score,
             "mitre_technique": mitre_technique,
             "status": "OPEN",
-            "raw_log": raw_event.get("raw_log")
+            "raw_log": raw_log
         }
 
     @staticmethod
-    def _normalize_timestamp(ts_val: Any) -> datetime:
+    def _infer_telemetry_origin(source_type: str, raw_event: Dict[str, Any]) -> str:
+        desc = (raw_event.get("description") or "").upper()
+        if "[TEST DRILL]" in desc or "DRILL EVENT" in (raw_event.get("raw_log") or ""):
+            return "SECURITY_DRILL"
+        st = source_type.lower()
+        if "host" in st or "sensor" in st:
+            return "HOST_TELEMETRY"
+        if "simulator" in st:
+            return "SIMULATED_DEMO"
+        return "HISTORICAL_LOG"
+
+    @classmethod
+    def _normalize_timestamp(cls, ts_val: Any) -> Tuple[datetime, bool]:
+        """
+        Parses multi-format timestamps.
+        Returns a tuple: (normalized_utc_datetime, is_valid_timestamp_boolean).
+        Invalid or missing timestamps are explicitly identified with is_valid=False.
+        """
         if isinstance(ts_val, datetime):
             if ts_val.tzinfo is None:
-                return ts_val.replace(tzinfo=timezone.utc)
-            return ts_val.astimezone(timezone.utc)
+                return ts_val.replace(tzinfo=timezone.utc), True
+            return ts_val.astimezone(timezone.utc), True
+
+        # Check numeric epoch timestamps
+        if isinstance(ts_val, (int, float)):
+            try:
+                # 13 digits = milliseconds epoch
+                if ts_val > 1e11:
+                    return datetime.fromtimestamp(ts_val / 1000.0, tz=timezone.utc), True
+                return datetime.fromtimestamp(ts_val, tz=timezone.utc), True
+            except (ValueError, OverflowError, OSError):
+                return datetime.now(timezone.utc), False
 
         if not ts_val or not isinstance(ts_val, str):
-            return datetime.now(timezone.utc)
+            return datetime.now(timezone.utc), False
 
         ts_str = ts_val.strip()
-        # Handle ISO format
+        if not ts_str:
+            return datetime.now(timezone.utc), False
+
+        # Numeric epoch string
+        if ts_str.isdigit():
+            try:
+                val = int(ts_str)
+                if val > 1e11:
+                    return datetime.fromtimestamp(val / 1000.0, tz=timezone.utc), True
+                return datetime.fromtimestamp(val, tz=timezone.utc), True
+            except Exception:
+                pass
+
+        # 1. ISO 8601 with or without Z
+        iso_str = ts_str
+        if iso_str.endswith("Z"):
+            iso_str = iso_str[:-1] + "+00:00"
         try:
-            # Handle 'Z' suffix
-            if ts_str.endswith("Z"):
-                ts_str = ts_str[:-1] + "+00:00"
-            dt = datetime.fromisoformat(ts_str)
+            dt = datetime.fromisoformat(iso_str)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone(timezone.utc)
+            return dt.astimezone(timezone.utc), True
         except ValueError:
             pass
 
-        return datetime.now(timezone.utc)
-
-    @staticmethod
-    def _sanitize_ip(ip_val: Any) -> Optional[str]:
-        if not ip_val or not isinstance(ip_val, str):
-            return None
-        ip_str = ip_val.strip()
+        # 2. RFC 2822 / Email format (e.g. "Mon, 20 Oct 2026 01:30:39 +0000")
         try:
-            # Validate IP format
-            ipaddress.ip_address(ip_str)
-            return ip_str
+            dt = email.utils.parsedate_to_datetime(ts_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc), True
+        except Exception:
+            pass
+
+        # 3. Apache / Nginx Combined Log format: "10/Sep/2026:10:00:00 +0000"
+        for fmt in (
+            "%d/%b/%Y:%H:%M:%S %z",
+            "%d/%b/%Y:%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y/%m/%d %H:%M:%S",
+        ):
+            try:
+                dt = datetime.strptime(ts_str, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc), True
+            except ValueError:
+                pass
+
+        # 4. Syslog format (e.g. "Sep 10 10:00:00" or "Oct 20 01:30:39")
+        try:
+            current_year = datetime.now(timezone.utc).year
+            dt = datetime.strptime(f"{current_year} {ts_str}", "%Y %b %d %H:%M:%S")
+            dt = dt.replace(tzinfo=timezone.utc)
+            return dt, True
         except ValueError:
-            return None
+            pass
+
+        # Parsing failed -> explicitly return fallback with is_valid=False
+        return datetime.now(timezone.utc), False
 
     @staticmethod
     def _sanitize_port(port_val: Any) -> Optional[int]:

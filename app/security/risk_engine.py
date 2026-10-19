@@ -1,4 +1,4 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 class RiskEngine:
     """
@@ -8,6 +8,15 @@ class RiskEngine:
       - 25 to 49:  MEDIUM
       - 50 to 74:  HIGH
       - 75 to 100: CRITICAL
+
+    The scoring formula incorporates:
+      1. Baseline Event Severity (0-100 based on MITRE tactic / impact)
+      2. Tool Rule Level Escalation (Wazuh levels 0-15, Suricata 1-4)
+      3. Frequency / Burst Multiplier (detecting brute-force & distributed scans)
+      4. Attack Signature Confidence (known CVEs, exploits, LOLBin signatures)
+      5. Network Asset Exposure (public internet vs internal RFC 1918 vs loopback)
+      6. User Account Privilege Context (targeting root / Administrator)
+      7. False Positive Dampeners (mitigating routine administrative or loopback tasks)
     """
 
     # Base severities by event type (0-100 scale baseline)
@@ -65,7 +74,10 @@ class RiskEngine:
         raw_level: Any = None,
         frequency_count: int = 1,
         is_external_ip: bool = True,
-        is_known_attack_signature: bool = False
+        is_known_attack_signature: bool = False,
+        detection_confidence: Optional[float] = None,
+        is_privileged_user: bool = False,
+        is_benign_internal_context: bool = False
     ) -> Tuple[int, str, Dict[str, Any]]:
         """
         Computes risk score, severity band, and transparent contributing factors.
@@ -111,19 +123,35 @@ class RiskEngine:
             frequency_mod = 5
 
         # 3. Attack Confidence Modifier
-        confidence_mod = 10 if is_known_attack_signature else 0
+        if detection_confidence is not None:
+            confidence = max(0.0, min(1.0, float(detection_confidence)))
+            confidence_mod = int(round(confidence * 10))
+        else:
+            confidence_mod = 10 if is_known_attack_signature else 0
+            confidence = 1.0 if is_known_attack_signature else 0.8
 
         # 4. External IP Exposure Modifier
         asset_mod = 5 if is_external_ip else 0
 
-        total_score = min(100, max(0, base + frequency_mod + confidence_mod + asset_mod))
+        # 5. User Account Privilege Modifier
+        privilege_mod = 10 if is_privileged_user else 0
+
+        # 6. False-Positive Dampener
+        # Dampen score for known internal maintenance / benign context
+        dampener_mod = 20 if is_benign_internal_context else 0
+
+        # Calculate final clamped score
+        raw_total = base + frequency_mod + confidence_mod + asset_mod + privilege_mod - dampener_mod
+        total_score = min(100, max(0, raw_total))
         severity = cls.get_severity_level(total_score)
 
         breakdown = {
             "base_severity": base,
-            "frequency_modifier": frequency_mod,
             "confidence_modifier": confidence_mod,
+            "frequency_modifier": frequency_mod,
             "network_exposure_modifier": asset_mod,
+            "privilege_modifier": privilege_mod,
+            "false_positive_dampener": dampener_mod,
             "final_score": total_score
         }
 

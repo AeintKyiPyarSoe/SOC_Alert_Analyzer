@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
-    String, Integer, Text, DateTime, CheckConstraint, Index, Uuid
+    String, Integer, Boolean, Text, DateTime, CheckConstraint, Index, Uuid
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.connection import Base
@@ -16,15 +16,21 @@ class Alert(Base):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
-    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_valid_timestamp: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    telemetry_origin: Mapped[str] = mapped_column(
+        String(32), default="HISTORICAL_LOG", nullable=False, index=True
+    )  # e.g. 'HOST_TELEMETRY', 'HISTORICAL_LOG', 'SIMULATED_DEMO', 'SECURITY_DRILL'
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     
-    source_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    source_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True, index=True)
     destination_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     source_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     destination_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     
     severity: Mapped[str] = mapped_column(String(16), default="MEDIUM", index=True)
     risk_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
@@ -44,4 +50,7 @@ class Alert(Base):
     __table_args__ = (
         CheckConstraint("risk_score BETWEEN 0 AND 100", name="chk_alert_risk_score"),
         Index("idx_alerts_correlation", "source_ip", "destination_ip", "event_type", "timestamp"),
+        Index("idx_alerts_status_timestamp", "status", "timestamp"),
+        Index("idx_alerts_severity_timestamp", "severity", "timestamp"),
+        Index("idx_alerts_origin_timestamp", "telemetry_origin", "timestamp"),
     )

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
-    String, Integer, Text, DateTime, ForeignKey, CheckConstraint, Uuid
+    String, Integer, Text, DateTime, ForeignKey, CheckConstraint, Index, Uuid
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.connection import Base
@@ -20,6 +20,10 @@ class IncidentAlert(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
+    __table_args__ = (
+        Index("idx_incident_alerts_alert_id", "alert_id"),
+    )
+
 class Incident(Base):
     __tablename__ = "incidents"
 
@@ -29,11 +33,11 @@ class Incident(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     risk_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    mitre_technique: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    mitre_technique: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="OPEN", index=True)
     
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     alert_count: Mapped[int] = mapped_column(Integer, default=1)
     
     created_at: Mapped[datetime] = mapped_column(
@@ -48,4 +52,6 @@ class Incident(Base):
     __table_args__ = (
         CheckConstraint("risk_score BETWEEN 0 AND 100", name="chk_incident_risk_score"),
         CheckConstraint("alert_count >= 1", name="chk_incident_alert_count"),
+        Index("idx_incidents_status_last_seen", "status", "last_seen"),
+        Index("idx_incidents_risk_last_seen", "risk_score", "last_seen"),
     )

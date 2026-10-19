@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database.connection import Base, get_db
+from app.config import settings
 from app.main import app
 
 # In-memory SQLite for testing
@@ -30,7 +31,7 @@ def db_session():
 
 @pytest.fixture(scope="function")
 def client(db_session):
-    """FastAPI TestClient with overridden get_db dependency."""
+    """FastAPI TestClient with overridden get_db and default admin API key header."""
     def override_get_db():
         try:
             yield db_session
@@ -39,5 +40,35 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
+        test_client.headers["X-API-Key"] = settings.ADMIN_API_KEY
+        yield test_client
+    app.dependency_overrides.clear()
+
+@pytest.fixture(scope="function")
+def unauthenticated_client(db_session):
+    """FastAPI TestClient without any credentials."""
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+@pytest.fixture(scope="function")
+def analyst_client(db_session):
+    """FastAPI TestClient with analyst credentials."""
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        test_client.headers["X-API-Key"] = settings.ANALYST_API_KEY
         yield test_client
     app.dependency_overrides.clear()

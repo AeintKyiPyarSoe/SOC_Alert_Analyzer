@@ -1,4 +1,5 @@
 import os
+import sys
 import uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -8,9 +9,10 @@ import asyncio
 from fastapi import FastAPI, Request, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, func
 
 from app.config import settings
 from app.database.connection import init_db, get_db, SessionLocal
@@ -22,11 +24,11 @@ from app.security.mitre_mapper import MitreMapper
 from app.parsers.wazuh import WazuhParser
 from app.parsers.suricata import SuricataParser
 from app.parsers.linux_auth import LinuxAuthParser
-import sys
 from app.security.normalizer import AlertNormalizer
 from app.security.correlator import IncidentCorrelator
 from app.security.stream import stream_manager
 from app.security.host_sensor import host_sensor, real_host_monitor_loop
+from app.security.auth import require_role, Role, User
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     BASE_DIR = Path(sys._MEIPASS) / "app"
@@ -62,6 +64,15 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# CORS Policy
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Static files & Jinja2 Templates
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -84,11 +95,16 @@ async def websocket_threats_endpoint(websocket: WebSocket):
             if msg == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
-        stream_manager.disconnect(websocket)
+        await stream_manager.disconnect(websocket)
+    except Exception:
+        await stream_manager.disconnect(websocket)
 
 @app.post("/api/v1/stream/toggle")
-def toggle_stream(active: bool = Query(...)):
-    """Enable or pause the real-time background threat simulator."""
+def toggle_stream(
+    active: bool = Query(...),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Enable or pause the real-time background threat simulator. Requires ANALYST or ADMIN role."""
     stream_manager.simulation_active = active
     return {
         "status": "success",
@@ -110,31 +126,37 @@ def get_stream_status():
 @app.get("/", response_class=HTMLResponse)
 def dashboard_view(request: Request, db: Session = Depends(get_db)):
     """Render main defensive SOC dashboard."""
-    alerts = db.query(Alert).order_by(desc(Alert.timestamp)).all()
-    
-    # If starting on a clean machine/laptop, immediately run full host audit
-    if len(alerts) == 0:
+    # Run initial audit if clean database
+    total_alerts_count = db.query(func.count(Alert.id)).scalar() or 0
+    if total_alerts_count == 0:
         try:
             host_sensor.run_full_audit(db)
-            alerts = db.query(Alert).order_by(desc(Alert.timestamp)).all()
         except Exception:
             pass
 
-    incidents = db.query(Incident).order_by(desc(Incident.risk_score), desc(Incident.last_seen)).all()
+    # High performance SQL-level KPI aggregation
+    total_alerts = db.query(func.count(Alert.id)).scalar() or 0
+    total_incidents = db.query(func.count(Incident.id)).scalar() or 0
+
+    sev_counts = dict(db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all())
+    status_counts = dict(db.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all())
 
     stats = {
-        "total_alerts": len(alerts),
-        "critical_count": sum(1 for a in alerts if a.severity == "CRITICAL"),
-        "high_count": sum(1 for a in alerts if a.severity == "HIGH"),
-        "medium_count": sum(1 for a in alerts if a.severity == "MEDIUM"),
-        "low_count": sum(1 for a in alerts if a.severity == "LOW"),
-        "open_count": sum(1 for a in alerts if a.status == "OPEN"),
-        "investigating_count": sum(1 for a in alerts if a.status == "INVESTIGATING"),
-        "resolved_count": sum(1 for a in alerts if a.status == "RESOLVED"),
-        "total_incidents": len(incidents)
+        "total_alerts": total_alerts,
+        "critical_count": sev_counts.get("CRITICAL", 0),
+        "high_count": sev_counts.get("HIGH", 0),
+        "medium_count": sev_counts.get("MEDIUM", 0),
+        "low_count": sev_counts.get("LOW", 0),
+        "open_count": status_counts.get("OPEN", 0),
+        "investigating_count": status_counts.get("INVESTIGATING", 0),
+        "resolved_count": status_counts.get("RESOLVED", 0),
+        "total_incidents": total_incidents
     }
 
-    # Serialize real laptop alerts with investigation playbooks and MITRE details
+    alerts = db.query(Alert).order_by(desc(Alert.timestamp)).limit(100).all()
+    incidents = db.query(Incident).order_by(desc(Incident.risk_score), desc(Incident.last_seen)).limit(50).all()
+
+    # Serialize alerts with playbooks and MITRE mappings
     serialized_alerts = []
     for a in alerts:
         guidance = get_remediation_guidance(a.event_type, a.description)
@@ -143,6 +165,7 @@ def dashboard_view(request: Request, db: Session = Depends(get_db)):
             "id": str(a.id),
             "title": a.description,
             "source_type": a.source_type,
+            "telemetry_origin": a.telemetry_origin,
             "event_type": a.event_type,
             "rule_id": str(a.id)[:8],
             "severity": a.severity,
@@ -177,7 +200,8 @@ def dashboard_view(request: Request, db: Session = Depends(get_db)):
             "alerts": alerts,
             "serialized_alerts": serialized_alerts,
             "incidents": incidents,
-            "host_info": host_sensor.get_host_info()
+            "host_info": host_sensor.get_host_info(),
+            "admin_key": settings.ADMIN_API_KEY
         }
     )
 
@@ -188,9 +212,11 @@ def alerts_view(
     status: Optional[str] = None,
     source: Optional[str] = None,
     search: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Render search & filter alerts catalog."""
+    """Render search & filter alerts catalog with pagination."""
     query = db.query(Alert)
 
     if severity:
@@ -211,7 +237,7 @@ def alerts_view(
             )
         )
 
-    alerts = query.order_by(desc(Alert.timestamp)).all()
+    alerts = query.order_by(desc(Alert.timestamp)).offset(offset).limit(limit).all()
 
     return templates.TemplateResponse(
         request=request,
@@ -222,7 +248,8 @@ def alerts_view(
             "current_severity": severity,
             "current_status": status,
             "current_source": source,
-            "current_search": search
+            "current_search": search,
+            "admin_key": settings.ADMIN_API_KEY
         }
     )
 
@@ -244,7 +271,8 @@ def alert_investigation_view(alert_id: uuid.UUID, request: Request, db: Session 
             "item": alert,
             "is_incident": False,
             "guidance": guidance,
-            "mitre_details": mitre_details
+            "mitre_details": mitre_details,
+            "admin_key": settings.ADMIN_API_KEY
         }
     )
 
@@ -252,13 +280,15 @@ def alert_investigation_view(alert_id: uuid.UUID, request: Request, db: Session 
 def incidents_view(
     request: Request,
     status: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Render correlated incidents list."""
+    """Render correlated incidents list with pagination."""
     query = db.query(Incident)
     if status:
         query = query.filter(Incident.status == status.upper())
-    incidents = query.order_by(desc(Incident.risk_score), desc(Incident.last_seen)).all()
+    incidents = query.order_by(desc(Incident.risk_score), desc(Incident.last_seen)).offset(offset).limit(limit).all()
 
     return templates.TemplateResponse(
         request=request,
@@ -266,7 +296,8 @@ def incidents_view(
         context={
             "active_page": "incidents",
             "incidents": incidents,
-            "current_status": status
+            "current_status": status,
+            "admin_key": settings.ADMIN_API_KEY
         }
     )
 
@@ -288,7 +319,8 @@ def incident_investigation_view(incident_id: uuid.UUID, request: Request, db: Se
             "item": incident,
             "is_incident": True,
             "guidance": guidance,
-            "mitre_details": mitre_details
+            "mitre_details": mitre_details,
+            "admin_key": settings.ADMIN_API_KEY
         }
     )
 
@@ -298,12 +330,19 @@ def upload_view(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="upload.html",
-        context={"active_page": "upload"}
+        context={
+            "active_page": "upload",
+            "admin_key": settings.ADMIN_API_KEY
+        }
     )
 
 @app.post("/api/v1/sample-data/load/{dataset_type}")
-def load_sample_dataset_route(dataset_type: str, db: Session = Depends(get_db)):
-    """Helper route to inject sample files directly for fast demonstration."""
+def load_sample_dataset_route(
+    dataset_type: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Helper route to inject sample files directly for fast demonstration. Requires ANALYST role."""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         root_sample_dir = Path(sys._MEIPASS) / "sample_data"
     else:
@@ -332,6 +371,7 @@ def load_sample_dataset_route(dataset_type: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid dataset type.")
 
     for raw in raw_events:
+        raw.setdefault("telemetry_origin", "HISTORICAL_LOG")
         norm = AlertNormalizer.normalize(raw)
         alert = Alert(id=uuid.uuid4(), **norm)
         db.add(alert)

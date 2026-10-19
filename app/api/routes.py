@@ -2,7 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, func
 
 from app.database.connection import get_db
 from app.models.alert import Alert
@@ -18,8 +18,22 @@ from app.security.normalizer import AlertNormalizer
 from app.security.correlator import IncidentCorrelator
 from app.security.remediation import get_remediation_guidance
 from app.security.mitre_mapper import MitreMapper
+from app.security.auth import get_current_user, require_role, Role, User
+from app.security.upload_security import SecureUploadHandler
 
 router = APIRouter()
+
+# -------------------------------------------------------------
+# REST API: Authentication Profile
+# -------------------------------------------------------------
+
+@router.get("/auth/me")
+def get_auth_profile(user: User = Depends(get_current_user)):
+    """Inspect caller's current authentication identity and assigned role."""
+    return {
+        "username": user.username,
+        "role": user.role.value
+    }
 
 # -------------------------------------------------------------
 # REST API: Alerts
@@ -29,31 +43,16 @@ router = APIRouter()
 async def upload_log_file(
     file: UploadFile = File(...),
     source_type: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
 ):
     """
-    Ingest a security log file (Wazuh, Suricata, or Linux auth),
-    normalize records, calculate risk, map MITRE tactics, and correlate incidents.
+    Ingest a security log file with strict size enforcement, content validation,
+    normalization, explainable risk scoring, and incident correlation.
+    Requires ANALYST or ADMIN role.
     """
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file selected for upload.")
-
-    # Validate file extension
-    valid_exts = (".json", ".log", ".txt", ".eve", ".xml", ".csv")
-    if not any(file.filename.lower().endswith(ext) for ext in valid_exts):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unsupported file format. Supported extensions: {', '.join(valid_exts)}"
-        )
-
-    try:
-        content_bytes = await file.read()
-        content = content_bytes.decode("utf-8", errors="replace")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read file: {str(e)}")
-
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    # Securely read and validate file (size limit, magic bytes, encoding, path traversal)
+    safe_filename, content = await SecureUploadHandler.read_and_validate_file(file)
 
     # Determine or auto-detect parser
     if not source_type or source_type.lower() == "auto":
@@ -65,7 +64,10 @@ async def upload_log_file(
         parser = get_parser(detected_source)
         raw_events = parser.parse(content)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error parsing log file: {str(e)}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Error parsing log file: {str(e)}"
+        )
 
     if not raw_events:
         raise HTTPException(
@@ -76,11 +78,14 @@ async def upload_log_file(
     # Normalize and persist alerts
     created_alerts = []
     for raw_ev in raw_events:
+        raw_ev.setdefault("telemetry_origin", "HISTORICAL_LOG")
         normalized = AlertNormalizer.normalize(raw_ev)
         alert = Alert(
             id=uuid.uuid4(),
             timestamp=normalized["timestamp"],
+            is_valid_timestamp=normalized["is_valid_timestamp"],
             source_type=normalized["source_type"],
+            telemetry_origin=normalized["telemetry_origin"],
             event_type=normalized["event_type"],
             description=normalized["description"],
             source_ip=normalized["source_ip"],
@@ -104,7 +109,7 @@ async def upload_log_file(
 
     return {
         "status": "success",
-        "message": f"Successfully ingested {len(created_alerts)} alerts from '{file.filename}'.",
+        "message": f"Successfully ingested {len(created_alerts)} alerts from '{safe_filename}'.",
         "source_type_used": detected_source,
         "alerts_count": len(created_alerts),
         "incidents_created": len(incidents)
@@ -115,12 +120,13 @@ def get_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity (LOW, MEDIUM, HIGH, CRITICAL)"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (OPEN, INVESTIGATING, RESOLVED, FALSE_POSITIVE)"),
     source_type: Optional[str] = Query(None, description="Filter by source tool (Wazuh, Suricata, Linux_Auth)"),
+    origin: Optional[str] = Query(None, description="Filter by telemetry origin (HOST_TELEMETRY, HISTORICAL_LOG, SIMULATED_DEMO, SECURITY_DRILL)"),
     search: Optional[str] = Query(None, description="Search across IP, username, description"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Retrieve normalized alerts with multi-attribute filtering."""
+    """Retrieve normalized alerts with multi-attribute filtering and pagination."""
     query = db.query(Alert)
 
     if severity:
@@ -129,6 +135,8 @@ def get_alerts(
         query = query.filter(Alert.status == status_filter.upper())
     if source_type:
         query = query.filter(Alert.source_type.ilike(f"%{source_type}%"))
+    if origin:
+        query = query.filter(Alert.telemetry_origin == origin.upper())
     if search:
         s = f"%{search.strip()}%"
         query = query.filter(
@@ -164,9 +172,10 @@ def get_alert_detail(alert_id: uuid.UUID, db: Session = Depends(get_db)):
 def update_alert_status(
     alert_id: uuid.UUID,
     payload: AlertStatusUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
 ):
-    """Transition alert through investigation lifecycle states."""
+    """Transition alert through investigation lifecycle states. Requires ANALYST or ADMIN role."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found.")
@@ -175,6 +184,24 @@ def update_alert_status(
     db.commit()
     db.refresh(alert)
     return alert
+
+@router.delete("/alerts/{alert_id}", status_code=status.HTTP_200_OK)
+def delete_alert(
+    alert_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ADMIN))
+):
+    """Permanently delete an individual alert record. Requires ADMIN role."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found.")
+
+    db.delete(alert)
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Alert '{alert_id}' deleted successfully."
+    }
 
 # -------------------------------------------------------------
 # REST API: Incidents
@@ -187,7 +214,7 @@ def get_incidents(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Retrieve correlated incidents list."""
+    """Retrieve correlated incidents list with pagination."""
     query = db.query(Incident)
     if status_filter:
         query = query.filter(Incident.status == status_filter.upper())
@@ -214,15 +241,15 @@ def get_incident_detail(incident_id: uuid.UUID, db: Session = Depends(get_db)):
 def update_incident_status(
     incident_id: uuid.UUID,
     payload: IncidentStatusUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
 ):
-    """Update status of an incident and cascade to linked alerts."""
+    """Update status of an incident and cascade to linked alerts. Requires ANALYST or ADMIN role."""
     incident = db.query(Incident).filter(Incident.id == incident_id).first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found.")
 
     incident.status = payload.status
-    # Cascade status to all linked member alerts
     for alert in incident.alerts:
         alert.status = payload.status
 
@@ -231,37 +258,32 @@ def update_incident_status(
     return incident
 
 # -------------------------------------------------------------
-# REST API: Dashboard Stats
+# REST API: Dashboard Stats (SQL-Level Aggregation)
 # -------------------------------------------------------------
 
 @router.get("/dashboard/stats", response_model=DashboardStats)
 def get_dashboard_stats(db: Session = Depends(get_db)):
-    """Calculate aggregated metrics for dashboard KPI cards."""
-    alerts = db.query(Alert).all()
-    incidents_count = db.query(Incident).count()
+    """Calculate aggregated metrics using high-performance SQL group-by queries."""
+    total_alerts = db.query(func.count(Alert.id)).scalar() or 0
+    total_incidents = db.query(func.count(Incident.id)).scalar() or 0
 
-    total_alerts = len(alerts)
-    critical_count = sum(1 for a in alerts if a.severity == "CRITICAL")
-    high_count = sum(1 for a in alerts if a.severity == "HIGH")
-    medium_count = sum(1 for a in alerts if a.severity == "MEDIUM")
-    low_count = sum(1 for a in alerts if a.severity == "LOW")
+    sev_rows = db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all()
+    sev_map = {row[0]: row[1] for row in sev_rows}
 
-    open_count = sum(1 for a in alerts if a.status == "OPEN")
-    investigating_count = sum(1 for a in alerts if a.status == "INVESTIGATING")
-    resolved_count = sum(1 for a in alerts if a.status == "RESOLVED")
-    false_positive_count = sum(1 for a in alerts if a.status == "FALSE_POSITIVE")
+    status_rows = db.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all()
+    status_map = {row[0]: row[1] for row in status_rows}
 
     return DashboardStats(
         total_alerts=total_alerts,
-        critical_count=critical_count,
-        high_count=high_count,
-        medium_count=medium_count,
-        low_count=low_count,
-        open_count=open_count,
-        investigating_count=investigating_count,
-        resolved_count=resolved_count,
-        false_positive_count=false_positive_count,
-        total_incidents=incidents_count
+        critical_count=sev_map.get("CRITICAL", 0),
+        high_count=sev_map.get("HIGH", 0),
+        medium_count=sev_map.get("MEDIUM", 0),
+        low_count=sev_map.get("LOW", 0),
+        open_count=status_map.get("OPEN", 0),
+        investigating_count=status_map.get("INVESTIGATING", 0),
+        resolved_count=status_map.get("RESOLVED", 0),
+        false_positive_count=status_map.get("FALSE_POSITIVE", 0),
+        total_incidents=total_incidents
     )
 
 # -------------------------------------------------------------
@@ -275,10 +297,13 @@ def get_host_sensor_status():
     return host_sensor.get_host_info()
 
 @router.post("/host/audit")
-def trigger_host_security_audit(db: Session = Depends(get_db)):
+def trigger_host_security_audit(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
+):
     """
-    Execute an immediate, comprehensive security audit of the local machine.
-    Audits running processes, listening sockets, firewall posture, and Windows/Linux event logs.
+    Execute an immediate security audit of the local machine.
+    Requires ANALYST or ADMIN role.
     """
     from app.security.host_sensor import host_sensor
     created = host_sensor.run_full_audit(db)
@@ -293,18 +318,25 @@ def trigger_host_security_audit(db: Session = Depends(get_db)):
     }
 
 @router.post("/host/drill")
-def trigger_host_test_drill(db: Session = Depends(get_db)):
+def trigger_host_test_drill(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
+):
     """
-    Generate an intentional, labeled [TEST DRILL] alert to evaluate triage playbooks
-    and verify real-time notifications safely.
+    Generate an intentional, labeled [TEST DRILL] alert to evaluate triage playbooks.
+    Requires ANALYST or ADMIN role.
     """
     from app.security.host_sensor import host_sensor
     return host_sensor.run_test_drill(db)
 
 @router.post("/alerts/clear")
-def clear_all_alerts(db: Session = Depends(get_db)):
+def clear_all_alerts(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ADMIN))
+):
     """
     Clear all alerts and incidents, and immediately re-scan the host for genuine live threats.
+    Requires elevated ADMIN role.
     """
     from app.models.incident import IncidentAlert
     from app.security.host_sensor import host_sensor

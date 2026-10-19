@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any
 
+from sqlalchemy import func
 from app.database.connection import SessionLocal
 from app.models.alert import Alert
 from app.models.incident import Incident
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 SIMULATED_ATTACKS = [
     {
         "source_type": "Wazuh",
+        "telemetry_origin": "SIMULATED_DEMO",
         "event_type": "ssh_authentication_failure",
         "description": "sshd: Failed SSH login attempt for user root",
         "source_ip": "185.220.101.5",
@@ -29,6 +31,7 @@ SIMULATED_ATTACKS = [
     },
     {
         "source_type": "Suricata",
+        "telemetry_origin": "SIMULATED_DEMO",
         "event_type": "network_scan",
         "description": "ET SCAN Aggressive SYN Port Scan across range 1-1024",
         "source_ip": "194.26.29.112",
@@ -39,6 +42,7 @@ SIMULATED_ATTACKS = [
     },
     {
         "source_type": "Suricata",
+        "telemetry_origin": "SIMULATED_DEMO",
         "event_type": "exploit_attempt",
         "description": "ET EXPLOIT Log4j Remote Code Execution CVE-2021-44228 JNDI lookup attempt",
         "source_ip": "45.155.205.233",
@@ -49,6 +53,7 @@ SIMULATED_ATTACKS = [
     },
     {
         "source_type": "Linux_Auth",
+        "telemetry_origin": "SIMULATED_DEMO",
         "event_type": "ssh_invalid_user",
         "description": "Failed password for invalid user 'oracle' from remote scanner",
         "source_ip": "185.220.101.5",
@@ -59,6 +64,7 @@ SIMULATED_ATTACKS = [
     },
     {
         "source_type": "Wazuh",
+        "telemetry_origin": "SIMULATED_DEMO",
         "event_type": "suspicious_command",
         "description": "Suspicious PowerShell base64 encoded execution detected in user profile",
         "source_ip": "192.168.1.88",
@@ -70,6 +76,7 @@ SIMULATED_ATTACKS = [
     },
     {
         "source_type": "Suricata",
+        "telemetry_origin": "SIMULATED_DEMO",
         "event_type": "denial_of_service",
         "description": "ET DOS Inbound SYN Flood Traffic Anomaly Exceeding Baseline",
         "source_ip": "198.51.100.99",
@@ -86,8 +93,8 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
     try:
         template = random.choice(SIMULATED_ATTACKS).copy()
         template["timestamp"] = datetime.now(timezone.utc).isoformat()
+        template["telemetry_origin"] = "SIMULATED_DEMO"
         
-        # Occasionally vary source port
         if "source_port" in template:
             template["source_port"] = random.randint(30000, 65000)
 
@@ -100,18 +107,23 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
         # Correlate
         new_incidents = IncidentCorrelator.correlate_alerts(db)
 
-        # Recalculate stats
-        all_alerts = db.query(Alert).all()
+        # SQL-level aggregation
+        total_alerts = db.query(func.count(Alert.id)).scalar() or 0
+        total_incidents = db.query(func.count(Incident.id)).scalar() or 0
+
+        sev_counts = dict(db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all())
+        status_counts = dict(db.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all())
+
         stats = {
-            "total_alerts": len(all_alerts),
-            "critical_count": sum(1 for a in all_alerts if a.severity == "CRITICAL"),
-            "high_count": sum(1 for a in all_alerts if a.severity == "HIGH"),
-            "medium_count": sum(1 for a in all_alerts if a.severity == "MEDIUM"),
-            "low_count": sum(1 for a in all_alerts if a.severity == "LOW"),
-            "open_count": sum(1 for a in all_alerts if a.status == "OPEN"),
-            "investigating_count": sum(1 for a in all_alerts if a.status == "INVESTIGATING"),
-            "resolved_count": sum(1 for a in all_alerts if a.status == "RESOLVED"),
-            "total_incidents": db.query(Incident).count()
+            "total_alerts": total_alerts,
+            "critical_count": sev_counts.get("CRITICAL", 0),
+            "high_count": sev_counts.get("HIGH", 0),
+            "medium_count": sev_counts.get("MEDIUM", 0),
+            "low_count": sev_counts.get("LOW", 0),
+            "open_count": status_counts.get("OPEN", 0),
+            "investigating_count": status_counts.get("INVESTIGATING", 0),
+            "resolved_count": status_counts.get("RESOLVED", 0),
+            "total_incidents": total_incidents
         }
 
         alert_dict = {
@@ -122,6 +134,7 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
             "event_type": alert.event_type,
             "description": alert.description,
             "source_type": alert.source_type,
+            "telemetry_origin": alert.telemetry_origin,
             "source_ip": alert.source_ip,
             "destination_ip": alert.destination_ip,
             "mitre_technique": alert.mitre_technique,
@@ -142,6 +155,7 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
 
         return {
             "type": "LIVE_THREAT",
+            "origin": "SIMULATED_DEMO",
             "alert": alert_dict,
             "stats": stats,
             "new_incidents": incidents_data
@@ -152,16 +166,17 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
 async def live_threat_simulator_loop():
     """Background loop that emits live threats periodically to active WebSocket clients."""
     logger.info("Real-time Threat Simulator loop started.")
-    # Initial sleep to let app boot
     await asyncio.sleep(5)
     
     while True:
         try:
             if stream_manager.simulation_active and stream_manager.active_connections:
-                # Generate a live threat every 10 to 18 seconds
                 payload = generate_and_save_live_threat()
                 await stream_manager.broadcast(payload)
                 logger.info(f"Broadcasted live threat: {payload['alert']['description']}")
+        except asyncio.CancelledError:
+            logger.info("Live threat simulator loop cancelled cleanly.")
+            break
         except Exception as e:
             logger.error(f"Error in live threat generator: {e}", exc_info=True)
             

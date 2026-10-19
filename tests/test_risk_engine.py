@@ -29,3 +29,35 @@ def test_burst_frequency_escalation():
     assert score_35 > score_1
     assert breakdown_35["frequency_modifier"] == 30
     assert sev_35 in ["HIGH", "CRITICAL"]
+
+def test_privilege_context_and_confidence_modifiers():
+    # Standard user
+    score_std, _, b_std = RiskEngine.calculate_risk(
+        event_type="windows_failed_logon",
+        source_type="Windows_Event",
+        is_privileged_user=False
+    )
+    # Privileged account (e.g. Administrator/root)
+    score_priv, _, b_priv = RiskEngine.calculate_risk(
+        event_type="windows_failed_logon",
+        source_type="Windows_Event",
+        is_privileged_user=True
+    )
+    assert score_priv == score_std + 10
+    assert b_priv["privilege_modifier"] == 10
+
+def test_false_positive_dampener():
+    # Base risk for suspicious command
+    score_base, _, _ = RiskEngine.calculate_risk(
+        event_type="suspicious_command",
+        source_type="Host_Process_Sensor",
+        is_benign_internal_context=False
+    )
+    # Verified benign context (e.g. dev build script in loopback)
+    score_dampened, _, b_damp = RiskEngine.calculate_risk(
+        event_type="suspicious_command",
+        source_type="Host_Process_Sensor",
+        is_benign_internal_context=True
+    )
+    assert score_dampened < score_base
+    assert b_damp["false_positive_dampener"] == 20

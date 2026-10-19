@@ -189,6 +189,7 @@
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
     <!-- Client Controller Script -->
+    <script>window.SOC_API_KEY = "{{ admin_key or '' }}";</script>
     <script src="/static/js/app.js"></script>
     {% block scripts %}{% endblock %}
 </body>

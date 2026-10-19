@@ -4,18 +4,22 @@ services:
     container_name: soc_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: soc_user
-      POSTGRES_PASSWORD: soc_secure_password
-      POSTGRES_DB: soc_alert_db
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-soc_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-soc_alert_db}
+    # Security: Restrict direct database exposure to host. Database is only accessible
+    # on the internal Docker network. Uncomment 127.0.0.1:5432 only for local debugging.
+    # ports:
+    #   - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U soc_user -d soc_alert_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-soc_user} -d ${POSTGRES_DB:-soc_alert_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - soc_internal_net
 
   web:
     build: .
@@ -25,12 +29,27 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://soc_user:soc_secure_password@db:5432/soc_alert_db
-      CORRELATION_WINDOW_SECONDS: 300
+      POSTGRES_USER: ${POSTGRES_USER:-soc_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-soc_alert_db}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-soc-admin-key-default-2026}
+      ANALYST_API_KEY: ${ANALYST_API_KEY:-soc-analyst-key-default-2026}
+      SECRET_KEY: ${SECRET_KEY:-soc-insecure-secret-key-change-in-production-2026}
+      CORRELATION_WINDOW_SECONDS: ${CORRELATION_WINDOW_SECONDS:-300}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-25}
     ports:
       - "8000:8000"
     volumes:
-      - ./sample_data:/app/sample_data
+      - ./sample_data:/app/sample_data:ro
+    networks:
+      - soc_internal_net
+
+networks:
+  soc_internal_net:
+    driver: bridge
 
 volumes:
   postgres_data:

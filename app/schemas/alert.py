@@ -5,7 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AlertBase(BaseModel):
     timestamp: datetime
+    is_valid_timestamp: bool = True
     source_type: str
+    telemetry_origin: str = "HISTORICAL_LOG"
     event_type: str
     description: str
     source_ip: Optional[str] = None
