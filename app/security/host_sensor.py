@@ -269,7 +269,7 @@ class HostSecuritySensor:
                         })
 
             # 5. Process Masquerading check
-            if self.os_type == "Windows" and name in self.SYSTEM32_NAMES:
+            if name in self.SYSTEM32_NAMES:
                 if exe and "system32" not in exe and "syswow64" not in exe:
                     sig = f"masq_{name}_{pid}"
                     if sig not in self.seen_signatures:

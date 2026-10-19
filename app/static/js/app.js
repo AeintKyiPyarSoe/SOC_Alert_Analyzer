@@ -98,10 +98,6 @@ function getApiHeaders(extraHeaders = {}) {
     if (csrf) {
         headers['X-CSRF-Token'] = csrf;
     }
-    const key = sessionStorage.getItem('soc_api_key') || localStorage.getItem('soc_api_key');
-    if (key) {
-        headers['X-API-Key'] = key;
-    }
     return headers;
 }
 
@@ -1435,16 +1431,15 @@ async function submitAuthKey() {
 }
 
 async function clearAuthKey() {
-    SOC_STATE.csrfToken = null;
-    sessionStorage.removeItem('soc_api_key');
-    localStorage.removeItem('soc_api_key');
+    const headers = getApiHeaders();
     try {
         await fetch('/api/v1/auth/logout', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: getApiHeaders()
+            headers: headers
         });
     } catch (e) {}
+    SOC_STATE.csrfToken = null;
     showToast('Signed out of session.');
     await checkAuthStatus();
     closeAuthModal();

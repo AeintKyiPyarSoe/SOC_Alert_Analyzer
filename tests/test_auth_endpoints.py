@@ -161,3 +161,55 @@ def test_websocket_ticket_issuance_and_consumption(unauthenticated_client):
 
     # Second consumption of the same ticket must fail (atomically consumed)
     assert session_manager.consume_ws_ticket(ticket) is None
+
+def test_logout_missing_csrf_rejected_and_session_preserved(unauthenticated_client):
+    """Verify that an active session logout without CSRF token is rejected with 403 and session remains active."""
+    login_resp = unauthenticated_client.post(
+        "/api/v1/auth/login",
+        json={"api_key": settings.ADMIN_API_KEY}
+    )
+    assert login_resp.status_code == 200
+    session_token = login_resp.cookies["soc_session"]
+
+    # Logout attempt without CSRF token
+    logout_resp = unauthenticated_client.post("/api/v1/auth/logout")
+    assert logout_resp.status_code == 403
+    assert "CSRF validation failed" in logout_resp.json()["detail"]
+
+    # Server session must still be active
+    assert session_manager.get_session(session_token) is not None
+
+def test_logout_invalid_csrf_rejected_and_session_preserved(unauthenticated_client):
+    """Verify that an active session logout with an invalid CSRF token is rejected with 403."""
+    login_resp = unauthenticated_client.post(
+        "/api/v1/auth/login",
+        json={"api_key": settings.ADMIN_API_KEY}
+    )
+    assert login_resp.status_code == 200
+    session_token = login_resp.cookies["soc_session"]
+
+    logout_resp = unauthenticated_client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": "forged_malicious_csrf_token"}
+    )
+    assert logout_resp.status_code == 403
+    assert "CSRF validation failed" in logout_resp.json()["detail"]
+    assert session_manager.get_session(session_token) is not None
+
+def test_logout_without_active_session_succeeds_and_clears_cookies(unauthenticated_client):
+    """Verify that logout without an active session safely returns 200 and clears cookies."""
+    logout_resp = unauthenticated_client.post("/api/v1/auth/logout")
+    assert logout_resp.status_code == 200
+    assert logout_resp.json()["status"] == "success"
+
+def test_legacy_soc_api_key_cookie_rejected(unauthenticated_client):
+    """Verify that legacy soc_api_key cookie is ignored and does NOT authenticate the user."""
+    unauthenticated_client.cookies.set("soc_api_key", settings.ADMIN_API_KEY)
+    resp = unauthenticated_client.get("/api/v1/auth/me")
+    assert resp.status_code == 200
+    # Must remain unauthenticated anonymous VIEWER, not elevated ADMIN
+    assert resp.json()["authenticated"] is False
+    assert resp.json()["username"] == "anonymous"
+    assert resp.json()["role"] == "VIEWER"
+    unauthenticated_client.cookies.clear()
+

@@ -104,3 +104,66 @@ def test_stream_toggle_and_status(client):
     r = client.post("/api/v1/stream/toggle?active=true")
     assert r.status_code == 200
     assert r.json()["simulation_active"] is True
+
+def test_websocket_origin_validation_unit_tests():
+    """Unit test complete scheme, hostname, and port validation logic in is_allowed_origin."""
+    from app.security.auth import is_allowed_origin
+
+    # Positive: Native / non-browser client without Origin header
+    assert is_allowed_origin(None) is True
+
+    # Positive: Standard desktop launcher origins
+    assert is_allowed_origin("http://127.0.0.1:8000") is True
+    assert is_allowed_origin("http://localhost:8000") is True
+    assert is_allowed_origin("http://localhost:8050") is True
+    assert is_allowed_origin("http://localhost:8080") is True
+    assert is_allowed_origin("http://127.0.0.1:80") is True
+    assert is_allowed_origin("https://127.0.0.1:443") is True
+
+    # Negative: Arbitrary localhost ports rejected
+    assert is_allowed_origin("http://localhost:3000") is False
+    assert is_allowed_origin("http://127.0.0.1:9999") is False
+    assert is_allowed_origin("http://localhost:4567") is False
+
+    # Negative: Untrusted cross-origins
+    assert is_allowed_origin("https://evil-attacker.com") is False
+    assert is_allowed_origin("http://192.168.1.100:8000") is False
+
+    # Negative: Malformed or non-http/https origins
+    assert is_allowed_origin("") is False
+    assert is_allowed_origin("null") is False
+    assert is_allowed_origin("javascript:alert(1)") is False
+    assert is_allowed_origin("file:///etc/passwd") is False
+    assert is_allowed_origin("ws://localhost:8000") is False
+
+def test_websocket_rejects_arbitrary_localhost_ports(unauthenticated_client):
+    ticket = session_manager.create_ws_ticket(username="admin", role="ADMIN")
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with unauthenticated_client.websocket_connect(
+            f"/ws/threats?ticket={ticket}",
+            headers={"Origin": "http://localhost:3000"}
+        ) as ws:
+            ws.receive_text()
+    assert exc_info.value.code == 1008
+
+def test_websocket_accepts_legitimate_desktop_launcher_origin(unauthenticated_client):
+    ticket = session_manager.create_ws_ticket(username="admin", role="ADMIN")
+    with unauthenticated_client.websocket_connect(
+        f"/ws/threats?ticket={ticket}",
+        headers={"Origin": "http://127.0.0.1:8000"}
+    ) as ws:
+        ws.send_text("ping")
+        assert ws.receive_text() == "pong"
+
+def test_websocket_rejects_legacy_token_and_api_key_query_params(unauthenticated_client):
+    """Verify that legacy ?token= and ?api_key= query parameters are rejected."""
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with unauthenticated_client.websocket_connect(f"/ws/threats?token={settings.ADMIN_API_KEY}") as ws:
+            ws.receive_text()
+    assert exc_info.value.code == 1008
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with unauthenticated_client.websocket_connect(f"/ws/threats?api_key={settings.ADMIN_API_KEY}") as ws:
+            ws.receive_text()
+    assert exc_info.value.code == 1008
+

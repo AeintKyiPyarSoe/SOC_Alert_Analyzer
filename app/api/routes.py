@@ -155,10 +155,19 @@ def login_route(payload: LoginRequest, request: Request, response: Response):
 
 @router.post("/auth/logout")
 def logout_route(request: Request, response: Response):
-    """Revoke authenticated session on server and clear browser session cookies."""
+    """Revoke authenticated session on server and clear browser session cookies. Requires valid CSRF protection for active sessions."""
     session_token = request.cookies.get("soc_session")
     if session_token:
-        session_manager.revoke_session(session_token)
+        session = session_manager.get_session(session_token.strip())
+        if session:
+            # Active browser session requires CSRF token verification
+            client_csrf = request.headers.get("X-CSRF-Token") or request.headers.get("x-csrf-token")
+            if not session_manager.validate_csrf(session, client_csrf):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="CSRF validation failed: Invalid or missing CSRF token."
+                )
+            session_manager.revoke_session(session_token.strip())
 
     response.delete_cookie(key="soc_session", path="/")
     response.delete_cookie(key="soc_csrf", path="/")

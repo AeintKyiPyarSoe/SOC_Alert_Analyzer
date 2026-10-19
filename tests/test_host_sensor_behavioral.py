@@ -81,3 +81,24 @@ def test_drill_telemetry_origin_separation(db_session):
     res = sensor.run_test_drill(db_session)
     assert res["status"] == "success"
     assert res["alert"]["telemetry_origin"] == "SECURITY_DRILL"
+
+def test_behavioral_masquerading_cross_platform_linux_and_darwin():
+    """Verify that masquerading detection operates reliably across Linux and macOS host sensors."""
+    for simulated_os in ("Linux", "Darwin"):
+        sensor = HostSecuritySensor()
+        sensor.os_type = simulated_os
+        sensor.seen_signatures.clear()
+
+        proc_mock = MagicMock()
+        proc_mock.pid = 9995
+        proc_mock.name.return_value = "svchost.exe"
+        proc_mock.exe.return_value = "/tmp/svchost.exe"
+        proc_mock.cmdline.return_value = ["svchost.exe"]
+        proc_mock.username.return_value = "root"
+        proc_mock.parent.return_value = None
+
+        events = sensor._analyze_single_process(proc_mock)
+        masq_events = [e for e in events if e["mitre_technique"] == "T1036.005"]
+        assert len(masq_events) == 1, f"Expected masquerading detected under {simulated_os}"
+        assert masq_events[0]["event_type"] == "masqueraded_process"
+

@@ -51,8 +51,7 @@ def get_current_user(
     Resolves the authenticated user and assigned role from:
       1. Direct API Key header (X-API-Key or Bearer token for programmatic API clients)
       2. Server-side session token cookie ('soc_session')
-      3. Legacy cookie ('soc_api_key' for backward compatibility during transition)
-      4. Default to VIEWER (demo mode or unauthenticated guest)
+      3. Default to VIEWER (demo mode or unauthenticated guest)
     """
     if not settings.AUTH_ENABLED:
         return User(username="admin_local", role=Role.ADMIN, auth_type="local")
@@ -85,14 +84,7 @@ def get_current_user(
                 role_enum = Role.VIEWER
             return User(username=session.username, role=role_enum, auth_type="session")
 
-    # 3. Check legacy cookie for backward compatibility
-    legacy_key = request.cookies.get("soc_api_key")
-    if legacy_key:
-        user = validate_token(legacy_key.strip())
-        if user:
-            return user
-
-    # 4. Fallback to unauthenticated / demo guest
+    # 3. Fallback to unauthenticated / demo guest
     if settings.DEMO_MODE:
         return User(username="demo_viewer", role=Role.VIEWER, auth_type="anonymous")
     return User(username="anonymous", role=Role.VIEWER, auth_type="anonymous")
@@ -141,35 +133,64 @@ def require_role(min_role: Role):
         return user
     return role_checker
 
-def is_allowed_origin(origin: Optional[str], host_header: Optional[str]) -> bool:
+def is_allowed_origin(origin: Optional[str], host_header: Optional[str] = None) -> bool:
     """
-    Validates WebSocket origin header against allowed hosts to prevent cross-site WebSocket hijacking.
+    Validates WebSocket origin header against allowed hosts to prevent cross-site WebSocket hijacking (CSWSH).
+    Validates scheme, hostname, and port strictly.
+    Rejects malformed origins, arbitrary localhost ports, and untrusted cross-origins.
+    Does not rely on untrusted Host headers.
     """
-    if not origin:
-        return True  # Native desktop clients / same-origin without origin header
+    if origin is None:
+        # RFC 6455: Native desktop applications / CLI clients without browser Origin header
+        return True
+
+    origin_str = origin.strip()
+    if not origin_str:
+        return False
 
     try:
-        parsed = urllib.parse.urlparse(origin)
+        parsed = urllib.parse.urlparse(origin_str)
+        scheme = parsed.scheme.lower()
+        # Scheme MUST be standard HTTP or HTTPS
+        if scheme not in ("http", "https"):
+            return False
+
         origin_host = parsed.hostname
         if not origin_host:
             return False
+        origin_host = origin_host.lower()
 
-        # Always permit loopback / local development
-        if origin_host in ("127.0.0.1", "localhost", "::1"):
-            return True
+        # Determine effective port
+        default_port = 443 if scheme == "https" else 80
+        origin_port = parsed.port if parsed.port is not None else default_port
 
-        # Check against incoming Host header
-        if host_header:
-            parsed_host = host_header.split(":")[0]
-            if origin_host.lower() == parsed_host.lower():
-                return True
-
-        # Check against configured ALLOWED_ORIGINS (excluding wildcard * for WebSocket connections)
+        # 1. Check configured production ALLOWED_ORIGINS
         for allowed in settings.ALLOWED_ORIGINS:
-            if allowed != "*":
-                parsed_allowed = urllib.parse.urlparse(allowed if "://" in allowed else f"http://{allowed}").hostname
-                if parsed_allowed and parsed_allowed.lower() == origin_host.lower():
+            allowed_clean = allowed.strip()
+            if not allowed_clean or allowed_clean == "*":
+                # Wildcards are not accepted for authenticated WebSocket origin validation
+                continue
+            try:
+                allowed_parsed = urllib.parse.urlparse(
+                    allowed_clean if "://" in allowed_clean else f"https://{allowed_clean}"
+                )
+                allowed_scheme = allowed_parsed.scheme.lower() if allowed_parsed.scheme else "https"
+                allowed_host = (allowed_parsed.hostname or "").lower()
+                allowed_port = allowed_parsed.port if allowed_parsed.port is not None else (443 if allowed_scheme == "https" else 80)
+
+                if (scheme == allowed_scheme or not allowed_parsed.scheme) and origin_host == allowed_host and origin_port == allowed_port:
                     return True
+            except Exception:
+                continue
+
+        # 2. Legitimate localhost / desktop application origins
+        if origin_host in ("127.0.0.1", "localhost", "::1"):
+            # Permit standard web ports (80, 443, 8080) and launcher dynamic range [8000..8099]
+            if origin_port in (80, 443, 8080) or (8000 <= origin_port < 8100):
+                return True
+            # Reject arbitrary localhost ports (e.g. 3000, 5000, 9999, etc.)
+            return False
+
         return False
     except Exception:
         return False
@@ -179,12 +200,11 @@ async def authenticate_websocket(websocket: WebSocket) -> Optional[User]:
     Authenticates a WebSocket connection via:
       1. Short-lived, single-use connection ticket (?ticket=...)
       2. Server-side session cookie ('soc_session')
-      3. Legacy token parameter / cookie (legacy scripts)
-      4. Demo mode fallback
+      3. Demo mode fallback
     Validates origin header to protect against Cross-Site WebSocket Hijacking (CSWSH).
     Returns User on success, or None on failure (resulting in code 1008 Policy Violation).
     """
-    # Validate WebSocket Origin
+    # Validate WebSocket Origin strictly
     origin = websocket.headers.get("origin")
     host_header = websocket.headers.get("host")
     if not is_allowed_origin(origin, host_header):
@@ -215,23 +235,8 @@ async def authenticate_websocket(websocket: WebSocket) -> Optional[User]:
                 role_enum = Role.VIEWER
             return User(username=session.username, role=role_enum, auth_type="session")
 
-    # 3. Legacy token parameter or cookie
-    token = websocket.query_params.get("token") or websocket.query_params.get("api_key")
-    if not token and "soc_api_key" in websocket.cookies:
-        token = websocket.cookies.get("soc_api_key")
-
-    if token:
-        user = validate_token(token)
-        if user:
-            return user
-
-    # 4. In DEMO_MODE, grant read-only demonstration stream access
+    # 3. In DEMO_MODE, grant read-only demonstration stream access
     if settings.DEMO_MODE:
         return User(username="demo_viewer", role=Role.VIEWER, auth_type="anonymous")
-
-    # 5. Local loopback viewer
-    client_host = websocket.client.host if websocket.client else ""
-    if client_host in ("127.0.0.1", "::1", "localhost") and settings.DEMO_MODE:
-        return User(username="local_viewer", role=Role.VIEWER, auth_type="anonymous")
 
     return None
