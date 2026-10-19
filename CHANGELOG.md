@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2026-10-20
+
+### Added
+- HTML Route Access Controls: Enforced authentication across all server-rendered endpoints (`/alerts`, `/incidents`, `/alerts/{id}`, `/incidents/{id}`, `/upload`). Anonymous visitors are isolated to `SIMULATED_DEMO` telemetry, and host metrics are redacted for unauthenticated guests.
+- Automated HTML access control regression test suite (`tests/test_html_route_security.py`).
+- Cross-platform process masquerading detection and test parity (`tests/test_host_sensor_behavioral.py`).
+- Expanded empirical host behavioral detection benchmark suite to 20 balanced scenarios (10 true positives, 10 true negatives) including false-positive edge cases (`docs/detection_evaluation.md`).
+
+### Changed
+- WebSocket Origin validation: Rewrote `is_allowed_origin` in `app/security/auth.py` with strict scheme, host, and port matching, restricting loopback connections to standard web ports (80, 443, 8080) and launcher ranges (8000–8099), preventing Cross-Site WebSocket Hijacking without relying on unvalidated Host headers.
+- Replaced legacy `soc_api_key` cookie and WebSocket query parameter authentication (`?token=`, `?api_key=`) with cryptographically secure session management and short-lived tickets.
+- Removed legacy API key storage and lookup in frontend `app/static/js/app.js`.
+
+### Fixed
+- Fixed Linux CI failures in Ubuntu Python 3.11–3.13 environments by removing platform gating from host sensor masquerading detection.
+- Fixed logout CSRF vulnerability: Enforced double-submit `X-CSRF-Token` header verification for active browser session revocation in `POST /api/v1/auth/logout`.
+- Expanded test suite from 88 to 115 passing tests across Windows and Linux environments.
+
+---
+
 ## [1.2.1] - 2026-10-20
 
 ### Added

@@ -83,7 +83,7 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.1"
+    VERSION: str = "1.2.2"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
     DEMO_MODE: bool = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")

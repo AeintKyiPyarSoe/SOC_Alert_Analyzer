@@ -122,8 +122,8 @@ All local UI styling and interactions were preserved without regressions:
 - **Standalone Windows Executable Build (`dist/SOC_Alert_Analyzer.exe`)**:
   - Build Tool: PyInstaller 6.22.2 (`SOC_Alert_Analyzer.spec`)
   - Target: Windows 64-bit Intel
-  - Size: 53,987,423 bytes (~51.5 MB)
-  - SHA-256 Checksum: `df8447131eab257c50dba0028f4baefd3d7eef6e3830dece1c576e85f9ebafb7`
+  - Size: 53,987,934 bytes (~51.5 MB)
+  - SHA-256 Checksum: `4f00f783ae17725659f6054f41e0530bee68b4da1115a83960ba69636cfe96f7`
   - Runtime Smoke Test: Passed (`--help` CLI invocation verified)
 
 ---
