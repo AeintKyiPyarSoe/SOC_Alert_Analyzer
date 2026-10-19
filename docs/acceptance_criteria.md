@@ -46,11 +46,11 @@ Each feature includes:
 - **And** displays an error message informing the user of the invalid format without server crash.
 
 #### Verification Checklist
-- [ ] Accepts `.json`, `.log`, and `.txt` extensions.
+- [ ] Accepts `.json`, `.log`, `.txt`, `.eve`, `.xml`, and `.csv` extensions.
 - [ ] Successfully processes Wazuh JSON alerts.
 - [ ] Successfully processes Suricata EVE JSON events.
 - [ ] Successfully processes Linux `auth.log` text records.
-- [ ] Rejects files larger than 50 MB with a friendly warning.
+- [ ] Rejects files larger than 25 MB (configurable via `MAX_UPLOAD_SIZE_MB`) with descriptive HTTP 413 or 400 response.
 - [ ] Displays parsed record count summary upon completion.
 
 ---

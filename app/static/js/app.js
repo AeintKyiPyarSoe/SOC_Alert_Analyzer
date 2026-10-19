@@ -890,7 +890,7 @@ function renderMitrePanel(mitre) {
             </div>
             <div class="mitre-technique-row">
                 <span class="mitre-technique-name">${escapeHtml(mitre.technique)}: ${escapeHtml(mitre.name)}</span>
-                <a href="${escapeHtml(mitre.url)}" target="_blank" rel="noopener noreferrer" class="mitre-link">
+                <a href="${sanitizeUrl(mitre.url)}" target="_blank" rel="noopener noreferrer" class="mitre-link">
                     Open Framework Reference ↗
                 </a>
             </div>
@@ -1540,3 +1540,13 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+function sanitizeUrl(url) {
+    if (!url) return '#';
+    const trimmed = String(url).trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+        return escapeHtml(trimmed);
+    }
+    return '#';
+}
+

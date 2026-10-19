@@ -62,6 +62,19 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
                 os.chmod(creds_file, 0o600)
             except Exception:
                 pass
+        # Restrict file permissions on Windows NTFS via icacls
+        if sys.platform == "win32":
+            try:
+                import subprocess
+                user = os.environ.get("USERNAME")
+                if user:
+                    subprocess.run(
+                        ["icacls", str(creds_file), "/inheritance:r", "/grant:r", f"{user}:(R,W)"],
+                        capture_output=True,
+                        check=False
+                    )
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -144,6 +157,7 @@ class Settings:
 
     # Correlation Engine Configuration
     CORRELATION_WINDOW_SECONDS: int = int(os.getenv("CORRELATION_WINDOW_SECONDS", "300"))
+    MAX_ALERTS_PER_INCIDENT: int = int(os.getenv("MAX_ALERTS_PER_INCIDENT", "1000"))
 
     # CORS Settings
     ALLOWED_ORIGINS: List[str] = [

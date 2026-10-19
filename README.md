@@ -2,9 +2,9 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-97%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
-[![Security Audited](https://img.shields.io/badge/security-RBAC%20%26%20Bandit%20Verified-blueviolet.svg?style=flat&logo=shield)](docs/acceptance_criteria.md)
+[![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
 [![Release](https://img.shields.io/badge/release-v1.2.1-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
@@ -226,11 +226,12 @@ SOC Alert Analyzer supports three distinct deployment profiles tailored for diff
 The fastest way to run on a clean Windows workstation with **zero Python or compiler installation required**:
 
 1. Download **`SOC_Alert_Analyzer.exe`** and **`SHA256SUMS.txt`** from [Releases](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
-2. Verify the release checksum in PowerShell:
+2. Verify the release checksum in Windows PowerShell:
    ```powershell
-   python -c "import hashlib; print(hashlib.sha256(open('SOC_Alert_Analyzer.exe', 'rb').read()).hexdigest())"
+   Get-FileHash .\SOC_Alert_Analyzer.exe -Algorithm SHA256
    ```
-3. Double-click **`SOC_Alert_Analyzer.exe`** or run from PowerShell:
+   Compare the computed hash against the value published in `SHA256SUMS.txt`.
+3. Double-click **`SOC_Alert_Analyzer.exe`** or run from PowerShell / Command Prompt:
    ```powershell
    .\SOC_Alert_Analyzer.exe
    ```
@@ -267,19 +268,69 @@ docker compose up --build -d
 
 ### Option 3: Run from Source (Python Development)
 
+Supports **Python 3.11, 3.12, and 3.13**.
+
+#### Windows (PowerShell)
 ```powershell
 # 1. Clone repository
 git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
 cd SOC_Alert_Analyzer
 
-# 2. Set up environment variables
-copy .env.example .env
+# 2. Create and activate a Python virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 
-# 3. Install dependencies
+# 3. Configure local environment variables
+Copy-Item .env.example .env
+
+# 4. Install dependencies
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-# 4. Launch application
+# 5. Launch application
 python launcher.py
+```
+
+#### Linux (Ubuntu / Debian / RHEL / Fedora)
+```bash
+# 1. Clone repository
+git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
+cd SOC_Alert_Analyzer
+
+# 2. Create and activate a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Configure local environment variables
+cp .env.example .env
+
+# 4. Install dependencies
+python3 -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# 5. Launch application
+python3 launcher.py
+```
+
+#### macOS (Apple Silicon / Intel)
+```bash
+# 1. Clone repository
+git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
+cd SOC_Alert_Analyzer
+
+# 2. Create and activate a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Configure local environment variables
+cp .env.example .env
+
+# 4. Install dependencies
+python3 -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# 5. Launch application
+python3 launcher.py
 ```
 Open your browser to `http://127.0.0.1:8000`.
 
@@ -287,7 +338,7 @@ Open your browser to `http://127.0.0.1:8000`.
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains **81 automated pytest test cases** verifying all defensive security logic:
+The repository maintains an automated pytest test suite (**97 passing tests**) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
 
 ```powershell
 python -m pytest -v
@@ -295,6 +346,8 @@ python -m pytest -v
 
 ```text
 tests/test_api.py::test_html_views PASSED
+tests/test_auth_endpoints.py::test_session_login_and_cookie_generation PASSED
+tests/test_auth_endpoints.py::test_csrf_token_validation_on_state_changing_requests PASSED
 tests/test_auth_rbac.py::test_unauthenticated_requests_fail_on_sensitive_endpoints PASSED
 tests/test_auth_rbac.py::test_invalid_api_key_rejected PASSED
 tests/test_auth_rbac.py::test_analyst_role_permissions PASSED
@@ -312,11 +365,12 @@ tests/test_normalizer.py::test_normalize_invalid_fields PASSED
 tests/test_normalizer.py::test_normalize_multi_format_timestamps PASSED
 tests/test_risk_engine.py::test_privilege_context_and_confidence_modifiers PASSED
 tests/test_risk_engine.py::test_false_positive_dampener PASSED
-tests/test_stream_websocket.py::test_websocket_broadcast_with_origin_tag PASSED
+tests/test_stream_websocket.py::test_websocket_origin_validation_and_cswsh_defense PASSED
+tests/test_stream_websocket.py::test_websocket_single_use_ticket_handshake PASSED
 tests/test_upload_security.py::test_upload_binary_executable_rejected PASSED
 tests/test_upload_security.py::test_upload_oversized_payload_rejected PASSED
 tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PASSED
-============================= 70 passed in 11.2s =============================
+============================= 97 passed in 14.8s =============================
 ```
 
 ### Continuous Integration (GitHub Actions)
@@ -331,9 +385,11 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 
 ```text
 ├── .github/
-│   └── workflows/
-│       ├── ci.yml            # Multi-OS test & security audit pipeline
-│       └── release-exe.yml   # Automated Windows EXE build, smoke test & release pipeline
+│   ├── ISSUE_TEMPLATE/       # Structured bug report & security issue forms
+│   ├── workflows/
+│   │   ├── ci.yml            # Multi-OS test & security audit pipeline
+│   │   └── release-exe.yml   # Automated Windows EXE build, smoke test & release pipeline
+│   └── pull_request_template.md # Defensive engineering review checklist
 ├── alembic/                  # Database migration scripts and schema versioning
 ├── app/
 │   ├── api/
@@ -354,6 +410,7 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 │   │   ├── normalizer.py     # Multi-format normalizer & timestamp validator
 │   │   ├── remediation.py    # Plain-language triage guidance playbooks
 │   │   ├── risk_engine.py    # Explainable 0-100 risk scoring engine
+│   │   ├── session.py        # Cryptographic session manager & CSRF defense
 │   │   ├── simulator.py      # Demonstration live threat stream generator
 │   │   ├── stream.py         # Thread-safe WebSocket threat stream manager
 │   │   └── upload_security.py# Memory-safe chunked upload & validation handler
@@ -361,12 +418,15 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 │   └── templates/            # Jinja2 dashboard, alerts, incidents, and investigation views
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
-├── tests/                    # 81 automated pytest tests covering all subsystems
+├── tests/                    # 97 automated pytest tests covering all subsystems
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file
 ├── launcher.py               # One-click browser & Uvicorn launcher
 ├── SOC_Alert_Analyzer.spec   # PyInstaller standalone executable specification
+├── CHANGELOG.md              # Historical version release notes
+├── CONTRIBUTING.md           # Defensive contribution guidelines
+├── SECURITY.md               # Security policy & vulnerability reporting
 └── README.md
 ```
 
@@ -374,10 +434,22 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 
 ## ⚠️ Limitations & Defensive Operational Boundaries
 
-1. **Host Sensor Scope & User Permissions**: The host sensor functions as an EDR-Lite behavioral auditor via `psutil` and OS event logs. When executed without elevated administrator privileges, process inspection is limited to processes owned by the current user account, and access to privileged security event channels (e.g. Windows Security EID 4625/4688) may be restricted by Windows OS access control. For complete host-wide behavioral visibility, run the terminal or application as an Administrator. In production enterprise deployments, pair with kernel-level sensors (e.g. Sysmon, eBPF, CrowdStrike, or Wazuh Agent).
-2. **Correlation Window**: By default, the correlation window is set to 300 seconds (5 minutes). Extended low-and-slow adversary campaigns spanning hours or days should be tuned via `CORRELATION_WINDOW_SECONDS` or queried using historical SIEM search.
-3. **Log Formats**: While generic CSV, JSON, Apache, Syslog, Suricata, and Windows XML/JSON logs are natively parsed, custom binary event logs (`.evtx`) should be exported to XML or JSON before ingestion.
-4. **Standalone Packaging & Antivirus Heuristics**: Standalone single-file executables created by PyInstaller bundle Python and shared C libraries into a self-extracting archive. Machine learning antivirus engines without vendor signatures may occasionally flag newly generated binaries with generic warnings. Release integrity should always be verified against the published SHA-256 checksum in `SHA256SUMS.txt`.
+1. **Scope as an EDR-Lite Workbench (Not a Commercial EDR Replacement)**:
+   * The host sensor functions as a user-space behavioral auditor leveraging `psutil` and OS event logs.
+   * **Not a Kernel Driver**: Unlike enterprise EDR/XDR agents (e.g., CrowdStrike Falcon, SentinelOne, Microsoft Defender for Endpoint), SOC Alert Analyzer does not install a kernel driver (ELAM), hook low-level Windows kernel API calls, or perform in-memory DLL injection tracing.
+   * **User Privilege Limitations**: When executed under an unprivileged user account, process inspections are limited to processes owned by the current user. To inspect system-wide processes or privileged Windows Security Event Log channels (EID 4625, 4688), execute the application as an Administrator.
+   * **Sysmon Co-existence**: This application does not replace Microsoft Windows Sysmon. For complete enterprise telemetry, configure Sysmon on endpoints and forward XML/JSON logs into SOC Alert Analyzer.
+2. **Correlation Scope (Not a Petabyte-Scale Enterprise SIEM)**:
+   * The correlation engine uses a configurable sliding time window (`CORRELATION_WINDOW_SECONDS = 300` by default) to aggregate burst activity into incidents.
+   * It is optimized for local workstation triage, tier-1 SOC analysis, and demonstration drills. It is not designed to replace distributed Big Data SIEM architectures (e.g., Splunk Enterprise, Elastic Security, Microsoft Sentinel) handling tens of thousands of continuous events per second across multi-thousand endpoint fleets.
+3. **Log Format Ingestion Boundaries**:
+   * Supported formats include JSON (Wazuh, Suricata EVE), CSV, Apache/Nginx combined access logs, Syslog BSD/RFC 5424, and Windows Event XML/JSON.
+   * Proprietary binary event logs (`.evtx`) must be converted to XML or JSON prior to ingestion.
+4. **Standalone Packaging & Antivirus Heuristics**:
+   * Single-file Windows executables generated via PyInstaller bundle a self-extracting Python runtime. Heuristic antivirus scanners without vendor signatures may occasionally issue generic "Unknown Publisher" or "Heur.BZC" warnings.
+   * Always verify the authentic SHA-256 hash against the officially published [`SHA256SUMS.txt`](dist/SHA256SUMS.txt).
+5. **Strictly Defensive Application**:
+   * This project is strictly engineered for defensive blue-team operations, incident response, student training, and log correlation. It does not contain offensive weaponization, automated exploit delivery, or lateral movement tooling.
 
 ---
 

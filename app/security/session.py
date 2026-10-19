@@ -31,6 +31,8 @@ class SessionManager:
     def __init__(self):
         self._sessions: Dict[str, SessionData] = {}
         self._ws_tickets: Dict[str, Dict] = {}
+        self._login_attempts: Dict[str, list] = {}
+        self._lockouts: Dict[str, float] = {}
         self._lock = threading.Lock()
 
     @staticmethod
@@ -179,6 +181,51 @@ class SessionManager:
             if now > record["expires_at"]:
                 return None
             return record
+
+    def is_rate_limited(self, client_ip: str) -> Tuple[bool, int]:
+        """
+        Checks if an IP is currently locked out from authentication.
+        Returns (is_locked, remaining_seconds).
+        """
+        now = time.time()
+        with self._lock:
+            lockout_until = self._lockouts.get(client_ip)
+            if lockout_until:
+                if now < lockout_until:
+                    return True, int(lockout_until - now)
+                else:
+                    del self._lockouts[client_ip]
+            return False, 0
+
+    def record_login_attempt(
+        self,
+        client_ip: str,
+        success: bool,
+        max_attempts: int = 5,
+        window_seconds: int = 60,
+        lockout_seconds: int = 300
+    ) -> bool:
+        """
+        Records an authentication attempt. If failures exceed max_attempts within window,
+        temporarily locks out the IP for lockout_seconds.
+        """
+        now = time.time()
+        with self._lock:
+            if success:
+                self._login_attempts.pop(client_ip, None)
+                self._lockouts.pop(client_ip, None)
+                return True
+
+            attempts = self._login_attempts.get(client_ip, [])
+            # Prune attempts outside window
+            attempts = [t for t in attempts if now - t <= window_seconds]
+            attempts.append(now)
+            self._login_attempts[client_ip] = attempts
+
+            if len(attempts) >= max_attempts:
+                self._lockouts[client_ip] = now + lockout_seconds
+                return False
+            return True
 
     def _prune_expired_locked(self, now: float):
         """Internal helper to clean up expired sessions."""

@@ -71,15 +71,23 @@ jobs:
 
           # 2. Launch in background for HTTP API smoke test
           $proc = Start-Process .\dist\SOC_Alert_Analyzer.exe -ArgumentList '--port 8011 --no-browser' -PassThru
-          Start-Sleep -Seconds 6
-
+          $connected = $false
           try {
-            $resp = Invoke-RestMethod -Uri "http://127.0.0.1:8011/api/v1/auth/me" -TimeoutSec 10
-            Write-Host "Live Executable Health Check: SUCCESS"
-            Write-Host ($resp | ConvertTo-Json)
-          } catch {
-            Write-Host "Live smoke test error: $_"
-            throw $_
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 1
+              try {
+                $resp = Invoke-RestMethod -Uri "http://127.0.0.1:8011/api/v1/auth/me" -TimeoutSec 2
+                $connected = $true
+                Write-Host "Live Executable Health Check: SUCCESS (initialized in $($i+1)s)"
+                Write-Host ($resp | ConvertTo-Json)
+                break
+              } catch {
+                # Still initializing
+              }
+            }
+            if (-not $connected) {
+              throw "Executable failed to start and respond on port 8011 within 30 seconds."
+            }
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }

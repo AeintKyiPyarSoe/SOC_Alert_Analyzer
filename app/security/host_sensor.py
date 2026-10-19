@@ -72,6 +72,17 @@ class HostSecuritySensor:
     # Process masquerading targets
     SYSTEM32_NAMES: Set[str] = {"svchost.exe", "lsass.exe", "csrss.exe", "smss.exe", "services.exe"}
 
+    # Configurable process suppressions (e.g. approved maintenance scripts, backup agents)
+    PROCESS_SUPPRESSIONS: Set[str] = set()
+
+    @staticmethod
+    def normalize_path(path: str) -> str:
+        """Normalizes Windows device prefixes, slashes, and casing for consistent threat analysis."""
+        if not path:
+            return ""
+        cleaned = re.sub(r"^\\\?\?\\|^\\\\?\\", "", path)
+        return os.path.normcase(os.path.normpath(cleaned)).lower()
+
     def __init__(self):
         self.os_type = platform.system()  # 'Windows', 'Linux', 'Darwin'
         self.hostname = platform.node()
@@ -137,10 +148,14 @@ class HostSecuritySensor:
         try:
             pid = p.pid
             name = (p.name() or '').lower()
-            exe = (p.exe() or '').lower()
+            exe = self.normalize_path(p.exe() or '')
             cmdline_list = p.cmdline() or []
             cmdline = " ".join(cmdline_list).lower()
             username = p.username()
+
+            # Check process suppressions
+            if name in self.PROCESS_SUPPRESSIONS or exe in self.PROCESS_SUPPRESSIONS:
+                return []
 
             # Retrieve parent process information for tree analysis
             parent_name = ""
@@ -204,12 +219,19 @@ class HostSecuritySensor:
                         "raw_log": f"PID: {pid} | Exe: {exe} | Cmd: {cmdline}"
                     })
 
-            # 3. Behavioral LOLBins: Encoded PowerShell with hidden/bypass parameters
-            if "powershell" in name:
-                has_enc = "-enc" in cmdline or "-encodedcommand" in cmdline
-                has_bypass = "bypass" in cmdline or "-w hidden" in cmdline or "windowstyle hidden" in cmdline
-                has_download = "downloadstring" in cmdline or "iex" in cmdline
-                if has_enc or (has_bypass and has_download):
+            # 3. Behavioral LOLBins: Weighted PowerShell & script indicator evaluation
+            if "powershell" in name or "pwsh" in name:
+                lolbin_weight = 0
+                if any(enc in cmdline for enc in ["-enc", "-encodedcommand"]):
+                    lolbin_weight += 3
+                if any(byp in cmdline for byp in ["bypass", "unrestricted"]):
+                    lolbin_weight += 2
+                if any(hid in cmdline for hid in ["-w hidden", "windowstyle hidden", "-nop"]):
+                    lolbin_weight += 2
+                if any(cradle in cmdline for cradle in ["downloadstring", "downloadfile", "iex", "invoke-expression", "net.webclient"]):
+                    lolbin_weight += 3
+
+                if lolbin_weight >= 3:
                     sig = f"ps_behavioral_{pid}"
                     if sig not in self.seen_signatures:
                         self.seen_signatures.add(sig)
@@ -370,16 +392,22 @@ class HostSecuritySensor:
 
                     if ip in ("0.0.0.0", "::", "") and port in self.HIGH_RISK_PORTS:  # nosec B104
                         service_name, reason = self.HIGH_RISK_PORTS[port]
+
+                        proc_name = "Unknown"
+                        if conn.pid:
+                            try:
+                                proc_name = psutil.Process(conn.pid).name()
+                            except Exception:
+                                pass
+
+                        # Context filter: Allowlist developer runtime processes listening on dev ports
+                        proc_lower = proc_name.lower()
+                        if port in (8080, 8000) and any(d in proc_lower for d in ["python", "uvicorn", "code", "node"]):
+                            continue
+
                         sig = f"listen_{port}_{conn.pid}"
                         if sig not in self.seen_signatures:
                             self.seen_signatures.add(sig)
-
-                            proc_name = "Unknown"
-                            if conn.pid:
-                                try:
-                                    proc_name = psutil.Process(conn.pid).name()
-                                except Exception:
-                                    pass
 
                             events.append({
                                 "source_type": "Host_Network_Sensor",
@@ -387,13 +415,13 @@ class HostSecuritySensor:
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "event_type": "insecure_listening_port",
                                 "mitre_technique": "T1046",
-                                # Telemetry reporting for detected listener
+                                "description": f"Exposed High-Risk Listener: {service_name} on wildcard interface {ip}:{port} by process '{proc_name}' (PID: {conn.pid})",
                                 "source_ip": "0.0.0.0",  # nosec: B104
                                 "destination_ip": None,
                                 "source_port": port,
                                 "destination_port": None,
                                 "username": None,
-                                "raw_log": f"Status: LISTEN | LocalAddr: {ip}:{port} | Process: {proc_name} (PID {conn.pid})"
+                                "raw_log": f"Status: LISTEN | LocalAddr: {ip}:{port} | Process: {proc_name} (PID {conn.pid}) | Detail: {reason}"
                             })
 
                 elif conn.status == "ESTABLISHED" and conn.raddr:

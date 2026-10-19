@@ -28,10 +28,15 @@ class IncidentCorrelator:
             window_seconds = settings.CORRELATION_WINDOW_SECONDS
 
         # Query ONLY alerts that are not yet linked to any incident
+        # Isolate simulated demonstration drills from genuine incident correlation
+        filter_expr = [IncidentAlert.incident_id.is_(None)]
+        if not settings.DEMO_MODE:
+            filter_expr.append(Alert.telemetry_origin != "SIMULATED_DEMO")
+
         unlinked_alerts = (
             db.query(Alert)
             .outerjoin(IncidentAlert, Alert.id == IncidentAlert.alert_id)
-            .filter(IncidentAlert.incident_id.is_(None))
+            .filter(*filter_expr)
             .order_by(Alert.timestamp.asc())
             .all()
         )
@@ -39,11 +44,19 @@ class IncidentCorrelator:
         if not unlinked_alerts:
             return []
 
-        # Group unlinked alerts by entity key: (source_or_dest_ip, event_type)
+        # Group unlinked alerts by entity key
+        # Correlate authentication sequences (failures and successes) from the same IP together
+        AUTH_EVENTS = {
+            "ssh_authentication_failure", "ssh_invalid_user", "ssh_login_successful",
+            "windows_failed_logon", "windows_successful_logon"
+        }
         grouped: Dict[str, List[Alert]] = {}
         for alert in unlinked_alerts:
             entity_ip = alert.source_ip or alert.destination_ip or "internal_host"
-            key = f"{entity_ip}:{alert.event_type}"
+            if alert.event_type in AUTH_EVENTS:
+                key = f"{entity_ip}:auth_sequence"
+            else:
+                key = f"{entity_ip}:{alert.event_type}"
             grouped.setdefault(key, []).append(alert)
 
         affected_incidents: Dict[uuid.UUID, Incident] = {}
@@ -102,9 +115,10 @@ class IncidentCorrelator:
         cluster_start = min(valid_ts) if valid_ts else cluster[0].timestamp
         cluster_end = max(valid_ts) if valid_ts else cluster[-1].timestamp
 
+        max_cap = getattr(settings, "MAX_ALERTS_PER_INCIDENT", 1000)
         if active_cache and correlation_key in active_cache:
             cached = active_cache[correlation_key]
-            if cached.status == "OPEN":
+            if cached.status == "OPEN" and cached.alert_count < max_cap:
                 if (cached.last_seen >= cluster_start - window_delta and
                         cached.first_seen <= cluster_end + window_delta):
                     return cached
@@ -119,6 +133,7 @@ class IncidentCorrelator:
             db.query(Incident)
             .filter(
                 Incident.status == "OPEN",
+                Incident.alert_count < max_cap,
                 or_(
                     Incident.correlation_key == correlation_key,
                     and_(
@@ -255,6 +270,20 @@ class IncidentCorrelator:
                 f"{cluster_first_seen.strftime('%Y-%m-%d %H:%M:%S UTC')} and "
                 f"{cluster_last_seen.strftime('%Y-%m-%d %H:%M:%S UTC')}."
             )
+
+            # Multi-stage attack evaluation: check if cluster has both authentication failures and successful login
+            events_set = {a.event_type for a in cluster}
+            has_auth_fail = bool(events_set & {"ssh_authentication_failure", "ssh_invalid_user", "windows_failed_logon"})
+            has_auth_succ = bool(events_set & {"ssh_login_successful", "windows_successful_logon"})
+            if has_auth_fail and has_auth_succ:
+                final_risk = max(final_risk, 85)
+                title = f"Compromised Account: Brute Force Success Incident from {src_label}"
+                description = (
+                    f"CRITICAL MULTI-STAGE ATTACK: Repeated authentication failures followed by successful login "
+                    f"from {src_label} ({count} correlated events between "
+                    f"{cluster_first_seen.strftime('%Y-%m-%d %H:%M:%S UTC')} and "
+                    f"{cluster_last_seen.strftime('%Y-%m-%d %H:%M:%S UTC')})."
+                )
 
             incident = Incident(
                 id=uuid.uuid4(),

@@ -1,4 +1,6 @@
 import uuid
+import threading
+from datetime import datetime, timezone
 from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request, Response, status
@@ -25,6 +27,34 @@ from app.security.session import session_manager
 from app.security.upload_security import SecureUploadHandler
 
 router = APIRouter()
+
+class SecurityAuditTrail:
+    """Thread-safe security audit trail for administrative operations."""
+    def __init__(self, max_entries: int = 1000):
+        self._entries: list = []
+        self._lock = threading.Lock()
+        self._max = max_entries
+
+    def record(self, action: str, actor: str, role: str, client_ip: str, details: str = ""):
+        with self._lock:
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "action": action,
+                "actor": actor,
+                "role": role,
+                "client_ip": client_ip,
+                "details": details
+            }
+            self._entries.insert(0, entry)
+            if len(self._entries) > self._max:
+                self._entries.pop()
+
+    def get_logs(self, limit: int = 100) -> list:
+        with self._lock:
+            return list(self._entries[:limit])
+
+audit_trail = SecurityAuditTrail()
+
 
 # -------------------------------------------------------------
 # REST API: Authentication & Session Management
@@ -57,13 +87,30 @@ def login_route(payload: LoginRequest, request: Request, response: Response):
     """
     Authenticate browser session with an API key, issuing an HttpOnly opaque session cookie
     and CSRF token. The raw API key is never placed in cookies or sent back to JavaScript.
+    Protected by IP rate limiting and security audit logging.
     """
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 1. Rate Limiting Check
+    is_locked, remaining = session_manager.is_rate_limited(client_ip)
+    if is_locked:
+        audit_trail.record("AUTH_LOCKED_OUT", "anonymous", "NONE", client_ip, f"Blocked: {remaining}s remaining")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed login attempts. Temporarily locked out. Please retry in {remaining} seconds."
+        )
+
     user = validate_token(payload.api_key)
     if not user:
+        session_manager.record_login_attempt(client_ip, success=False)
+        audit_trail.record("AUTH_LOGIN_FAILED", "anonymous", "NONE", client_ip, "Invalid API key attempt")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key. Please check your credentials."
         )
+
+    session_manager.record_login_attempt(client_ip, success=True)
+    audit_trail.record("AUTH_LOGIN_SUCCESS", user.username, user.role.value, client_ip, "Session established")
 
     # Invalidate previous session token if rotating
     old_session = request.cookies.get("soc_session")
@@ -411,14 +458,18 @@ def update_incident_status(
 
 @router.get("/dashboard/stats", response_model=DashboardStats)
 def get_dashboard_stats(db: Session = Depends(get_db)):
-    """Calculate aggregated metrics using high-performance SQL group-by queries."""
-    total_alerts = db.query(func.count(Alert.id)).scalar() or 0
+    """Calculate aggregated metrics using high-performance SQL group-by queries, isolating simulated demo events."""
+    base_q = db.query(Alert)
+    if not settings.DEMO_MODE:
+        base_q = base_q.filter(Alert.telemetry_origin != "SIMULATED_DEMO")
+
+    total_alerts = base_q.with_entities(func.count(Alert.id)).scalar() or 0
     total_incidents = db.query(func.count(Incident.id)).scalar() or 0
 
-    sev_rows = db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all()
+    sev_rows = base_q.with_entities(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all()
     sev_map = {row[0]: row[1] for row in sev_rows}
 
-    status_rows = db.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all()
+    status_rows = base_q.with_entities(Alert.status, func.count(Alert.id)).group_by(Alert.status).all()
     status_map = {row[0]: row[1] for row in status_rows}
 
     return DashboardStats(
@@ -510,9 +561,28 @@ def clear_all_alerts(
     created = host_sensor.run_full_audit(db)
     incidents = IncidentCorrelator.correlate_alerts(db)
 
+    audit_trail.record("ALERTS_CLEARED", user.username, user.role.value, "internal", "Cleared all alerts and re-scanned baseline")
+
     return {
         "status": "success",
         "message": f"All historical records cleared. Re-scanned host system: {len(created)} genuine findings.",
         "real_alerts_count": len(created),
         "incidents_created": len(incidents)
     }
+
+@router.get("/audit/logs")
+def get_audit_logs(
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(require_role(Role.ADMIN))
+):
+    """
+    Retrieve security audit trails.
+    Requires elevated ADMIN role.
+    """
+    logs = audit_trail.get_logs(limit)
+    return {
+        "status": "success",
+        "count": len(logs),
+        "logs": logs
+    }
+

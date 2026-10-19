@@ -71,6 +71,8 @@ hiddenimports = [
     'app.security.ip_utils',
     'app.security.upload_security',
     'app.database.connection',
+    'app.config',
+    'app.main',
     'app.schemas.alert',
     'app.schemas.incident',
     'app.api.routes',
