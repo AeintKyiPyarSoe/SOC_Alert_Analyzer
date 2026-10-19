@@ -24,10 +24,6 @@ class AlertNormalizer:
         source_type = raw_event.get("source_type", "Unknown")
         telemetry_origin = raw_event.get("telemetry_origin") or cls._infer_telemetry_origin(source_type, raw_event)
         event_type = raw_event.get("event_type", "security_anomaly")
-        description = raw_event.get("description", "Security Event Detected")
-
-        # Normalize Timestamp and explicitly identify validity
-        timestamp, is_valid_timestamp = cls._normalize_timestamp(raw_event.get("timestamp"))
 
         # Sanitize and validate IP addresses using IPClassifier
         source_ip = IPClassifier.sanitize_ip(raw_event.get("source_ip"))
@@ -36,6 +32,23 @@ class AlertNormalizer:
         # Sanitize Ports
         source_port = cls._sanitize_port(raw_event.get("source_port"))
         destination_port = cls._sanitize_port(raw_event.get("destination_port"))
+
+        # Sanitize Username
+        username = raw_event.get("username")
+        if username:
+            username = str(username).strip()
+
+        # Detailed Description Synthesis (never leave ambiguous "Security Event Detected")
+        raw_desc = (raw_event.get("description") or "").strip()
+        if not raw_desc or raw_desc.lower() in ("security event detected", "security event", "security anomaly", "event", "alert"):
+            description = cls._synthesize_detailed_description(
+                raw_event, event_type, source_type, source_ip, destination_ip, source_port, destination_port, username
+            )
+        else:
+            description = raw_desc
+
+        # Normalize Timestamp and explicitly identify validity
+        timestamp, is_valid_timestamp = cls._normalize_timestamp(raw_event.get("timestamp"))
 
         # Determine true public external exposure
         is_external = IPClassifier.is_public_ip(source_ip)
@@ -47,8 +60,7 @@ class AlertNormalizer:
         )
 
         # Check privileged user context
-        username = raw_event.get("username")
-        is_privileged = bool(username and username.strip().lower() in cls.PRIVILEGED_USERS)
+        is_privileged = bool(username and username.lower() in cls.PRIVILEGED_USERS)
 
         # Map MITRE ATT&CK technique
         mitre_technique = raw_event.get("mitre_technique") or MitreMapper.map_event(event_type, description)
@@ -199,3 +211,44 @@ class AlertNormalizer:
         except (ValueError, TypeError):
             pass
         return None
+
+    @classmethod
+    def _synthesize_detailed_description(
+        cls,
+        raw_event: Dict[str, Any],
+        event_type: str,
+        source_type: str,
+        source_ip: Optional[str],
+        destination_ip: Optional[str],
+        source_port: Optional[int],
+        destination_port: Optional[int],
+        username: Optional[str]
+    ) -> str:
+        """Synthesizes an explicit, context-rich description when raw event description is vague or missing."""
+        clean_type = event_type.replace("_", " ").title()
+        details = []
+
+        if username:
+            details.append(f"targeting user account '{username}'")
+        if source_ip and destination_ip:
+            details.append(f"from host {source_ip} to destination {destination_ip}")
+        elif source_ip:
+            details.append(f"originating from source IP {source_ip}")
+        elif destination_ip:
+            details.append(f"directed towards destination IP {destination_ip}")
+
+        if destination_port:
+            details.append(f"on destination port {destination_port}")
+        elif source_port:
+            details.append(f"via port {source_port}")
+
+        proc = raw_event.get("process_name") or raw_event.get("process")
+        cmd = raw_event.get("command_line") or raw_event.get("cmd")
+        if proc:
+            details.append(f"involving process '{proc}'")
+        elif cmd:
+            details.append(f"executing command '{str(cmd)[:60]}'")
+
+        context_str = f" ({', '.join(details)})" if details else ""
+        return f"{clean_type} activity detected via {source_type}{context_str}."
+

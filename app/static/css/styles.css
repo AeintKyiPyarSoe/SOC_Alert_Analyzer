@@ -1929,3 +1929,185 @@ button, input, select, textarea {
         scroll-behavior: auto !important;
     }
 }
+
+/* --------------------------------------------------------------------------
+   12. Auth & Clearance Modal & Header Component
+   -------------------------------------------------------------------------- */
+.btn-header-auth {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-main);
+    background: var(--bg-surface-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-header-auth:hover {
+    border-color: var(--accent-mint);
+    color: var(--accent-mint);
+    background: rgba(160, 237, 197, 0.08);
+}
+
+.btn-header-auth.role-admin {
+    border-color: rgba(160, 237, 197, 0.5);
+    color: var(--accent-mint);
+}
+
+.btn-header-auth.role-analyst {
+    border-color: rgba(96, 165, 250, 0.5);
+    color: #60a5fa;
+}
+
+.auth-clearance-card {
+    background: var(--bg-surface-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-card);
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.auth-clearance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.auth-role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 9999px;
+}
+
+.auth-role-pill.admin {
+    background: rgba(160, 237, 197, 0.15);
+    color: var(--accent-mint);
+    border: 1px solid var(--accent-mint);
+}
+
+.auth-role-pill.analyst {
+    background: rgba(96, 165, 250, 0.15);
+    color: #60a5fa;
+    border: 1px solid #60a5fa;
+}
+
+.auth-role-pill.viewer {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid #94a3b8;
+}
+
+.auth-permissions-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.auth-perm-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--text-muted);
+}
+
+.auth-perm-item.active {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.auth-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.auth-input-wrapper input {
+    width: 100%;
+    padding: 0.6rem 2.5rem 0.6rem 2.25rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    transition: border-color var(--transition-fast);
+}
+
+.auth-input-wrapper input:focus {
+    outline: none;
+    border-color: var(--accent-mint);
+    box-shadow: 0 0 0 2px rgba(160, 237, 197, 0.2);
+}
+
+.auth-input-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--text-faint);
+    pointer-events: none;
+    width: 16px;
+    height: 16px;
+}
+
+.btn-toggle-key-visibility {
+    position: absolute;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0.2rem;
+    display: flex;
+    align-items: center;
+    transition: color var(--transition-fast);
+}
+
+.btn-toggle-key-visibility:hover {
+    color: var(--text-main);
+}
+
+.auth-feedback-banner {
+    padding: 0.65rem 0.85rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1.4;
+}
+
+.auth-feedback-banner.error {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.auth-feedback-banner.success {
+    background: rgba(160, 237, 197, 0.12);
+    border: 1px solid rgba(160, 237, 197, 0.4);
+    color: var(--accent-mint);
+}
+
+.auth-key-helper-box {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+

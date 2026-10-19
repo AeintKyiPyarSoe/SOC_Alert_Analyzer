@@ -154,8 +154,42 @@ function formatAlertForClient(rawAlert) {
         username: rawAlert.username || null,
         timestamp: rawAlert.timestamp || new Date().toISOString(),
         status: rawAlert.status || 'OPEN',
-        what_happened: rawAlert.description || 'Anomalous host event recorded on this machine.',
-        why_suspicious: 'Observed by real-time host defensive monitor.',
+        what_happened: (() => {
+            let desc = (rawAlert.description || '').trim();
+            if (!desc || desc.toLowerCase().includes('security event detected') || desc.toLowerCase() === 'security anomaly') {
+                const cleanType = (rawAlert.event_type || 'host security anomaly').replace(/_/g, ' ');
+                const ctx = [];
+                if (rawAlert.username) ctx.push(`user '${rawAlert.username}'`);
+                if (rawAlert.source_ip && rawAlert.destination_ip) ctx.push(`from ${rawAlert.source_ip} to ${rawAlert.destination_ip}`);
+                else if (rawAlert.source_ip) ctx.push(`source IP ${rawAlert.source_ip}`);
+                if (rawAlert.destination_port) ctx.push(`port ${rawAlert.destination_port}`);
+                return `Anomalous ${cleanType} activity detected${ctx.length ? ' involving ' + ctx.join(', ') : ''} on this host.`;
+            }
+            return desc;
+        })(),
+        why_suspicious: (() => {
+            const ev = (rawAlert.event_type || '').toLowerCase();
+            const d = (rawAlert.description || '').toLowerCase();
+            if (ev.includes('logon') || ev.includes('auth') || d.includes('logon')) {
+                return 'Repeated authentication failures indicate automated brute-force password guessing or account takeover attempts.';
+            }
+            if (ev.includes('shell') || d.includes('shell')) {
+                return 'Interactive command interpreters spawned by web processes indicate active web shell deployment.';
+            }
+            if (ev.includes('shadow') || ev.includes('ransom') || d.includes('shadow')) {
+                return 'Volume shadow copy purge commands are high-confidence indicators of ransomware inhibiting recovery before encryption.';
+            }
+            if (ev.includes('lolbin') || ev.includes('powershell') || d.includes('powershell')) {
+                return 'Native system tools executed with hidden window or encoded parameters indicate defense evasion.';
+            }
+            if (ev.includes('port') || ev.includes('scan') || d.includes('scan')) {
+                return 'Rapid network port sweeps signify adversary reconnaissance probing for unpatched listening services.';
+            }
+            if (ev.includes('masquerad') || d.includes('masquerad')) {
+                return 'System executables executing outside Windows System32 are masquerading as legitimate binaries to hide malware.';
+            }
+            return 'Observed by real-time host defensive behavioral sensors.';
+        })(),
         score_explanation: `Risk Score ${rawAlert.risk_score || 35}/100 based on host telemetry heuristics`,
         mitre: rawAlert.mitre_technique ? {
             technique: rawAlert.mitre_technique,
@@ -575,7 +609,7 @@ function renderQueueList() {
     });
 }
 
-function selectAlert(alertId) {
+async function selectAlert(alertId) {
     SOC_STATE.selectedAlertId = alertId;
     renderQueueList();
     renderSelectedAlertDetails();
@@ -585,6 +619,41 @@ function selectAlert(alertId) {
         if (detailsPanel) {
             detailsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+    }
+
+    // Retrieve detailed backend triage playbook and MITRE guidance
+    try {
+        const resp = await apiFetch(`/api/v1/alerts/${alertId}`);
+        if (resp && resp.ok) {
+            const detailData = await resp.json();
+            const alertObj = SOC_STATE.alerts.find((a) => a.id === alertId);
+            if (alertObj && detailData.guidance) {
+                if (detailData.guidance.what_happened) {
+                    alertObj.what_happened = detailData.guidance.what_happened;
+                }
+                if (detailData.guidance.why_suspicious) {
+                    alertObj.why_suspicious = detailData.guidance.why_suspicious;
+                }
+                if (detailData.guidance.recommended_actions && detailData.guidance.recommended_actions.length) {
+                    alertObj.actions = detailData.guidance.recommended_actions;
+                }
+                if (detailData.mitre_details) {
+                    alertObj.mitre = {
+                        technique: detailData.mitre_details.technique_id,
+                        name: detailData.mitre_details.name,
+                        tactic: detailData.mitre_details.tactic,
+                        description: detailData.mitre_details.description,
+                        url: detailData.mitre_details.url
+                    };
+                }
+                // Refresh panel if this alert is still currently selected
+                if (SOC_STATE.selectedAlertId === alertId) {
+                    renderSelectedAlertDetails();
+                }
+            }
+        }
+    } catch (e) {
+        console.debug('Detailed guidance fetch skipped:', e);
     }
 }
 
@@ -1131,60 +1200,181 @@ function openHelpModal() {
 function openAuthModal() {
     const modal = document.getElementById('auth-modal');
     if (modal) {
+        modal.classList.add('open');
         modal.style.display = 'flex';
+        const feedback = document.getElementById('auth-feedback-banner');
+        if (feedback) feedback.style.display = 'none';
         checkAuthStatus();
+        setTimeout(() => {
+            const input = document.getElementById('auth-key-input');
+            if (input) input.focus();
+        }, 120);
     }
 }
 
 function closeAuthModal() {
     const modal = document.getElementById('auth-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.classList.remove('open');
+        setTimeout(() => { modal.style.display = 'none'; }, 150);
+    }
+}
+
+function toggleAuthKeyVisibility() {
+    const input = document.getElementById('auth-key-input');
+    const icon = document.getElementById('eye-icon');
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) {
+            icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+        }
+    } else {
+        input.type = 'password';
+        if (icon) {
+            icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+        }
+    }
 }
 
 async function checkAuthStatus() {
-    const display = document.getElementById('auth-status-display');
+    const roleBadge = document.getElementById('auth-role-badge');
+    const userDesc = document.getElementById('auth-user-desc');
+    const permTriage = document.getElementById('perm-triage');
+    const permAdmin = document.getElementById('perm-admin');
+    const btnLogout = document.getElementById('btn-auth-logout');
+    const btnSubmit = document.getElementById('btn-auth-submit');
+    const headerBtn = document.getElementById('header-auth-btn');
+    const headerLabel = document.getElementById('header-auth-label');
+
     try {
         const resp = await apiFetch('/api/v1/auth/me');
         if (resp && resp.ok) {
             const data = await resp.json();
-            if (display) {
-                display.textContent = `${data.role} (${data.username})${data.demo_mode ? ' • DEMO' : ''}`;
-                display.style.color = (data.role === 'ADMIN') ? 'var(--accent-mint)' : (data.role === 'ANALYST') ? '#60a5fa' : 'var(--text-muted)';
+            const role = data.role || 'VIEWER';
+            const isAuth = Boolean(data.authenticated);
+
+            if (headerLabel) {
+                headerLabel.textContent = `Role: ${role.charAt(0) + role.slice(1).toLowerCase()}`;
+            }
+            if (headerBtn) {
+                headerBtn.className = 'btn-header-auth';
+                if (role === 'ADMIN') headerBtn.classList.add('role-admin');
+                else if (role === 'ANALYST') headerBtn.classList.add('role-analyst');
+            }
+
+            if (roleBadge) {
+                roleBadge.textContent = role;
+                roleBadge.className = `auth-role-pill ${role.toLowerCase()}`;
+            }
+
+            if (userDesc) {
+                if (role === 'ADMIN') {
+                    userDesc.textContent = `Authenticated as Administrator (${data.username}). Full administrative control including alert purging, system configuration, and audit management.`;
+                } else if (role === 'ANALYST') {
+                    userDesc.textContent = `Authenticated as Cybersecurity Analyst (${data.username}). Authorized for log ingestion, alert triage, incident updates, and simulation drills.`;
+                } else {
+                    userDesc.textContent = `Currently operating in unauthenticated guest mode. Read-only inspection of dashboards, alerts, and incidents is permitted.`;
+                }
+            }
+
+            if (permTriage) {
+                if (role === 'ADMIN' || role === 'ANALYST') {
+                    permTriage.className = 'auth-perm-item active';
+                    permTriage.innerHTML = '<span>✓</span> Triage / Upload';
+                } else {
+                    permTriage.className = 'auth-perm-item';
+                    permTriage.innerHTML = '<span>—</span> Triage / Upload';
+                }
+            }
+
+            if (permAdmin) {
+                if (role === 'ADMIN') {
+                    permAdmin.className = 'auth-perm-item active';
+                    permAdmin.innerHTML = '<span>✓</span> Purge / Delete';
+                } else {
+                    permAdmin.className = 'auth-perm-item';
+                    permAdmin.innerHTML = '<span>—</span> Purge / Delete';
+                }
+            }
+
+            if (btnLogout) {
+                btnLogout.style.display = isAuth ? 'inline-flex' : 'none';
+            }
+            if (btnSubmit) {
+                btnSubmit.textContent = isAuth ? 'Switch Key' : 'Authenticate';
             }
         }
     } catch (e) {
-        if (display) display.textContent = 'Disconnected';
+        if (headerLabel) headerLabel.textContent = 'Role: Offline';
     }
 }
 
 async function submitAuthKey() {
     const input = document.getElementById('auth-key-input');
+    const feedback = document.getElementById('auth-feedback-banner');
+    const btnSubmit = document.getElementById('btn-auth-submit');
     const key = input ? input.value.trim() : '';
+
     if (!key) {
+        if (feedback) {
+            feedback.className = 'auth-feedback-banner error';
+            feedback.innerHTML = '⚠️ Please enter an API key.';
+            feedback.style.display = 'flex';
+        }
         showToast('Please enter an API key', 'warning');
         return;
     }
+
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Authenticating...';
+    }
+
     try {
         const resp = await fetch('/api/v1/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key: key })
         });
+
         if (resp.ok) {
             const data = await resp.json();
             sessionStorage.setItem('soc_api_key', key);
+            if (feedback) {
+                feedback.className = 'auth-feedback-banner success';
+                feedback.innerHTML = `✅ Successfully authenticated as <strong>${data.role}</strong> (${data.username})!`;
+                feedback.style.display = 'flex';
+            }
             showToast(`✅ Authenticated successfully as ${data.role}!`, 'success');
             if (input) input.value = '';
-            closeAuthModal();
-            checkAuthStatus();
-            // Re-init WebSocket with new token
+            await checkAuthStatus();
             if (typeof initThreatStream === 'function') initThreatStream();
+            setTimeout(() => {
+                closeAuthModal();
+            }, 750);
         } else {
-            const err = await resp.json();
-            showToast(`❌ Authentication failed: ${err.detail || 'Invalid key'}`, 'error');
+            const err = await resp.json().catch(() => ({}));
+            const msg = err.detail || 'Invalid credentials or API key format.';
+            if (feedback) {
+                feedback.className = 'auth-feedback-banner error';
+                feedback.innerHTML = `❌ ${escapeHtml(msg)}`;
+                feedback.style.display = 'flex';
+            }
+            showToast(`❌ Authentication failed: ${msg}`, 'error');
         }
     } catch (e) {
+        if (feedback) {
+            feedback.className = 'auth-feedback-banner error';
+            feedback.innerHTML = `❌ Network connection failed: ${escapeHtml(e.message)}`;
+            feedback.style.display = 'flex';
+        }
         showToast(`❌ Connection error: ${e.message}`, 'error');
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = 'Authenticate';
+        }
     }
 }
 
@@ -1195,7 +1385,7 @@ async function clearAuthKey() {
         await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
     } catch (e) {}
     showToast('Logged out of session.', 'info');
-    checkAuthStatus();
+    await checkAuthStatus();
     closeAuthModal();
 }
 

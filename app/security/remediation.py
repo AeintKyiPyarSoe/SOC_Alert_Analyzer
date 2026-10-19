@@ -225,24 +225,142 @@ EXPLANATION_TEMPLATES: Dict[str, Dict[str, Any]] = {
             "Compare the file's current cryptographic hash against known clean package repository hashes.",
             "Restore the file from a known-good backup if modification was unauthorized."
         ]
+    },
+    "web_shell": {
+        "title": "Web Shell Process Spawning (MITRE T1505.003)",
+        "what_happened": "A web server process (such as w3wp.exe, nginx, or httpd) spawned an interactive system command shell (cmd.exe, powershell.exe, sh, or bash).",
+        "why_suspicious": "Web servers should never launch interactive command interpreters during normal request handling. This behavior is a high-confidence indicator of an uploaded web backdoor (web shell) providing unauthorized interactive server access.",
+        "recommended_actions": [
+            "Immediately quarantine or isolate the web server from the internal production network.",
+            "Identify the parent web server worker process ID and terminate the spawned shell process.",
+            "Search the web document root (e.g., /var/www, C:\\inetpub\\wwwroot) for recently written or modified scripts (.php, .aspx, .jsp).",
+            "Collect volatile memory and web server access logs to identify the attacker's source IP and exploited upload vulnerability."
+        ]
+    },
+    "shadow_deletion": {
+        "title": "Ransomware Defense Evasion / Backup Snapshot Purge (MITRE T1490)",
+        "what_happened": "An executable or command line attempted to delete Windows Volume Shadow Copies using utility commands like 'vssadmin delete shadows' or 'wmic shadowcopy delete'.",
+        "why_suspicious": "Ransomware payloads systematically delete local Volume Shadow Copies immediately prior to encrypting user files to prevent administrators from restoring data without paying a ransom.",
+        "recommended_actions": [
+            "CRITICAL: Isolate the endpoint from the corporate network immediately (disconnect ethernet/disable Wi-Fi) to stop lateral spread.",
+            "Terminate the executing process and identify parent process lineage.",
+            "Verify offline immutable backups are intact and secure.",
+            "Check for newly created ransom notes or rapid file renaming across local drives and network shares."
+        ]
+    },
+    "ransomware": {
+        "title": "Ransomware Attack Indicators Detected (MITRE T1486 / T1490)",
+        "what_happened": "Host behavioral heuristics detected destructive actions characteristic of ransomware, such as volume shadow snapshot purge or high-entropy file encryption bursts.",
+        "why_suspicious": "Ransomware operators systematically inhibit system recovery and encrypt sensitive files to extort the organization.",
+        "recommended_actions": [
+            "Trigger emergency host network isolation immediately to protect neighboring servers.",
+            "Terminate the anomalous process and examine parent command line trees.",
+            "Verify the integrity of active backups and snapshots.",
+            "Contact incident response lead and forensic team for triage."
+        ]
+    },
+    "lolbin": {
+        "title": "Living-Off-The-Land Binary / Obfuscated Execution (MITRE T1059.001)",
+        "what_happened": "PowerShell or another native administrative tool was executed with hidden window flags (-w hidden), Base64 encoded payload (-enc), or a remote web download cradle.",
+        "why_suspicious": "Adversaries abuse legitimate, pre-installed Windows system tools (LOLBins) with obfuscation techniques to bypass traditional antivirus scanners and execute scripts directly in memory.",
+        "recommended_actions": [
+            "Inspect PowerShell ScriptBlock logging (Event ID 4104) to review the deobfuscated command text.",
+            "Identify the originating user account and parent process that launched the tool.",
+            "Terminate any lingering background interpreter processes.",
+            "Block the destination IP or domain referenced in the download cradle at your perimeter firewall."
+        ]
+    },
+    "brute_force": {
+        "title": "High-Volume Credential Guessing / Brute Force Attack (MITRE T1110)",
+        "what_happened": "A concentrated burst of failed authentication attempts was detected against user accounts from a remote or local source within a 5-minute sliding window.",
+        "why_suspicious": "Automated adversary tools and botnets systematically cycle through dictionaries of common passwords to compromise exposed service accounts.",
+        "recommended_actions": [
+            "Review the targeted username accounts and verify whether any subsequent logon attempt succeeded.",
+            "Add the attacking source IP address to your network perimeter blocklist or local firewall drop rules.",
+            "Enforce an automated account lockout threshold and mandate multi-factor authentication (MFA).",
+            "Rotate passwords for all targeted user accounts immediately."
+        ]
+    },
+    "port_probe": {
+        "title": "Network Reconnaissance / Port Scan (MITRE T1046)",
+        "what_happened": "A remote host systematically probed multiple TCP/UDP ports on this machine within a short timeframe.",
+        "why_suspicious": "Adversaries conduct automated port sweeps using scanners (such as Nmap, Masscan, or ZGrab) to discover exposed services, unpatched software versions, and open network entry points.",
+        "recommended_actions": [
+            "Inspect your firewall configuration to ensure all unused ports are filtered or closed.",
+            "Check whether the source IP belongs to an internal authorized vulnerability scanner.",
+            "If the IP is external or unapproved, block the offending IP address in your firewall.",
+            "Confirm that sensitive management interfaces (SSH, RDP, WinRM) are restricted to VPN access only."
+        ]
+    },
+    "sql_injection": {
+        "title": "Web Application SQL Injection Attack (MITRE T1190)",
+        "what_happened": "An inbound HTTP request contained malicious database syntax (e.g. UNION SELECT, OR 1=1, or SQL comment markers) designed to manipulate backend database queries.",
+        "why_suspicious": "SQL Injection vulnerabilities allow unauthenticated attackers to dump database records, extract credentials, bypass logins, and in some database configurations execute operating system commands.",
+        "recommended_actions": [
+            "Inspect web application logs to determine if the query resulted in a successful HTTP 200 response with leaked data or an HTTP 500 error.",
+            "Apply parameterized queries (prepared statements) in application code to neutralize SQL string concatenation.",
+            "Deploy or update Web Application Firewall (WAF) rule sets to block SQL injection patterns.",
+            "Audit database user permissions to ensure the web application connects with least-privilege access."
+        ]
+    },
+    "xss": {
+        "title": "Cross-Site Scripting (XSS) Attack (MITRE T1059.007)",
+        "what_happened": "Inbound HTTP request parameters contained script tags (<script>) or JavaScript event handlers designed to execute code in victim browsers.",
+        "why_suspicious": "XSS attacks enable adversaries to steal session cookies, hijack analyst accounts, and perform unauthorized actions on behalf of authenticated users.",
+        "recommended_actions": [
+            "Ensure input sanitization and context-aware HTML entity encoding are applied on all rendered parameters.",
+            "Verify that the `HttpOnly` and `SameSite` flags are configured on all session cookies to prevent theft via JavaScript.",
+            "Implement a strict Content Security Policy (CSP) header prohibiting inline script execution."
+        ]
+    },
+    "path_traversal": {
+        "title": "Directory Path Traversal / File Inclusion (MITRE T1083)",
+        "what_happened": "An HTTP request attempted directory traversal sequences ('../' or '..\\') to navigate outside the web root and access restricted local system files.",
+        "why_suspicious": "Attackers attempt path traversal to read configuration files, application source code, and operating system credentials (such as /etc/passwd or SAM databases).",
+        "recommended_actions": [
+            "Ensure all user-supplied file path inputs are strictly sanitized and validated against an allowed whitelist.",
+            "Restrict web server file read permissions so it cannot access files outside its root directory.",
+            "Review web server logs to verify whether the server returned file contents (HTTP 200) or rejected the attempt (HTTP 400/403/404)."
+        ]
     }
 }
 
 DEFAULT_EXPLANATION = {
-    "title": "Suspicious Security Event",
-    "what_happened": "A security monitoring tool flagged anomalous activity matching a security rule or threat signature.",
-    "why_suspicious": "The recorded pattern deviates from normal baseline device operations.",
+    "title": "Host Behavioral Anomaly",
+    "what_happened": "A security monitoring sensor flagged anomalous activity matching a security detection rule or threat pattern.",
+    "why_suspicious": "The recorded pattern deviates from normal baseline operating system behavior and warrants defensive analyst inspection.",
     "recommended_actions": [
-        "Review the source IP and target destination details.",
-        "Verify if any authorized administrative maintenance was taking place at that time.",
-        "Check system health and active connections."
+        "Review the source IP and target destination details in the Evidence tab.",
+        "Verify whether any authorized administrative maintenance or scheduled software update was taking place at that time.",
+        "Inspect active process parent-child relationships and associated network sockets.",
+        "If unrecognized, isolate the host system and preserve memory forensics."
     ]
 }
 
 def get_remediation_guidance(event_type: str, description: str = "") -> Dict[str, Any]:
-    """Retrieve plain-language explanation and recommended defensive playbook."""
+    """Retrieve plain-language explanation and recommended defensive playbook with dynamic synthesis."""
     target = f"{event_type.lower()} {description.lower()}"
     for key, val in EXPLANATION_TEMPLATES.items():
         if key in target:
             return val
-    return DEFAULT_EXPLANATION
+
+    # Dynamic contextual narrative synthesis when no static template matches
+    clean_title = event_type.replace("_", " ").title() if event_type else "Security Anomaly"
+    desc_clean = description.strip() if description else ""
+    if desc_clean and desc_clean.lower() not in ("security event detected", "security event", "security anomaly", "event"):
+        narrative = f"{desc_clean}. This activity was captured by defensive sensors and flagged as an operational anomaly."
+    else:
+        narrative = f"A host defensive sensor intercepted an anomalous {clean_title} event deviation matching detection criteria."
+
+    return {
+        "title": f"Investigate: {clean_title}",
+        "what_happened": narrative,
+        "why_suspicious": f"The recorded telemetry signature for '{clean_title}' deviates from the established baseline and indicates possible unauthorized behavior.",
+        "recommended_actions": [
+            "Inspect the involved process name, executable binary path, and parent-child process tree.",
+            "Review the source IP and destination network connection in the Evidence tab.",
+            "Verify whether this activity corresponds to authorized software updates or scheduled system administration.",
+            "If unauthorized, isolate the endpoint from the network and review forensic log history."
+        ]
+    }
+

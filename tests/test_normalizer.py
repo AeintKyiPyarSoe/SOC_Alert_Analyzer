@@ -63,3 +63,21 @@ def test_normalize_multi_format_timestamps():
     # 4. Null / Missing timestamp explicitly marked invalid
     r_null = AlertNormalizer.normalize({"timestamp": None, "description": "test"})
     assert r_null["is_valid_timestamp"] is False
+
+def test_normalize_vague_description_synthesized():
+    # Vague or missing descriptions must be enriched with context rather than "Security Event Detected"
+    raw_event = {
+        "event_type": "windows_failed_logon",
+        "description": "Security Event Detected",
+        "username": "Administrator",
+        "source_ip": "192.168.1.55",
+        "destination_port": "445",
+        "source_type": "Windows_Event"
+    }
+    norm = AlertNormalizer.normalize(raw_event)
+    assert norm["description"] != "Security Event Detected"
+    assert "Windows Failed Logon activity detected" in norm["description"]
+    assert "user account 'Administrator'" in norm["description"]
+    assert "192.168.1.55" in norm["description"]
+    assert "port 445" in norm["description"]
+
