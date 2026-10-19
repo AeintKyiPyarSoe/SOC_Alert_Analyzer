@@ -229,12 +229,15 @@
 
                 <!-- API Key Input Section -->
                 <div>
-                    <label for="auth-key-input" style="display: block; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.45rem;">
-                        Enter API Key:
+                    <label for="auth-key-input" style="display: block; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">
+                        Security Access Key
                     </label>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.55rem; line-height: 1.4;">
+                        Please provide your Analyst or Administrator key to unlock alert triage, log ingestion, and host audit features.
+                    </div>
                     <div class="auth-input-wrapper">
                         <svg class="auth-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-1.5 1.5L16 7m-1.5 1.5L13 10m-1.5 1.5L10 13l-4 4-2-2 4-4 2-2 1.5-1.5L13 6l2-2 6-2z"></path></svg>
-                        <input type="password" id="auth-key-input" placeholder="Paste admin_... or analyst_... key" autocomplete="off" onkeydown="if(event.key==='Enter') submitAuthKey();" />
+                        <input type="password" id="auth-key-input" placeholder="Paste your security access key here" autocomplete="off" onkeydown="if(event.key==='Enter') submitAuthKey();" />
                         <button type="button" class="btn-toggle-key-visibility" onclick="toggleAuthKeyVisibility()" title="Show/Hide Key" aria-label="Toggle API Key visibility">
                             <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                         </button>
@@ -245,9 +248,9 @@
                 <div class="auth-key-helper-box">
                     <strong style="color: var(--text-main); display: block; margin-bottom: 0.25rem;">🔑 Where to find your key:</strong>
                     <ul style="margin: 0; padding-left: 1.1rem; line-height: 1.5;">
-                        <li><strong>Desktop EXE:</strong> Saved in <code>%LOCALAPPDATA%\SOC_Alert_Analyzer\.auth_credentials</code> or startup console.</li>
-                        <li><strong>Python Source:</strong> Stored in <code>.auth_credentials</code> in the repository root directory.</li>
-                        <li><strong>Custom Key:</strong> Set <code>ADMIN_API_KEY</code> in your <code>.env</code> configuration.</li>
+                        <li><strong>Desktop App:</strong> Saved in <code>%LOCALAPPDATA%\SOC_Alert_Analyzer\.auth_credentials</code> or printed in your launcher window.</li>
+                        <li><strong>Source Setup:</strong> Found in <code>.auth_credentials</code> in the project directory.</li>
+                        <li><strong>Custom Key:</strong> Configured via <code>ADMIN_API_KEY</code> or <code>ANALYST_API_KEY</code> in your <code>.env</code> file.</li>
                     </ul>
                 </div>
             </div>
@@ -255,7 +258,7 @@
             <div class="modal-dialog-footer">
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-auth-logout" onclick="clearAuthKey()" style="display: none;">Log Out</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="closeAuthModal()">Close</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btn-auth-submit" onclick="submitAuthKey()">Authenticate</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-auth-submit" onclick="submitAuthKey()">Sign In</button>
             </div>
         </div>
     </div>

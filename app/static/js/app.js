@@ -103,9 +103,9 @@ async function apiFetch(url, options = {}) {
     try {
         const resp = await fetch(url, opts);
         if (resp.status === 401) {
-            showToast('⚠️ Authentication Required: Click Nicole\'s avatar in header to authenticate.', 'warning');
+            showToast('Sign in required. Click your role in the top header to enter your access key.');
         } else if (resp.status === 403) {
-            showToast('⛔ Permission Denied: Current role does not permit this action.', 'error');
+            showToast('Access denied: Your current role does not have permission for this action.');
         }
         return resp;
     } catch (e) {
@@ -984,7 +984,7 @@ async function toggleAlertReviewStatus(alertId) {
 // 6. Host Operations (Scan, Drill, Clear, Toggle Sensor)
 // --------------------------------------------------------------------------
 async function runHostAudit() {
-    showToast('🛡️ Running comprehensive host security audit...');
+    showToast('Running comprehensive host security audit...');
     try {
         const resp = await fetch('/api/v1/host/audit', {
             method: 'POST',
@@ -992,11 +992,16 @@ async function runHostAudit() {
         });
         const data = await resp.json();
         if (resp.ok) {
-            showToast(`Audit finished: ${data.findings_count || data.alerts_created || 0} host findings recorded.`);
+            showToast(`Audit completed: ${data.findings_count || data.alerts_created || 0} host findings recorded.`);
             // Fetch updated alerts
             await fetchAlertsFromApi();
+        } else if (resp.status === 401) {
+            showToast('Analyst clearance is required to run host audits. Please sign in with your access key.');
+            openAuthModal();
+        } else if (resp.status === 403) {
+            showToast('Your current role does not have permission to run host audits.');
         } else {
-            showToast(`Audit: ${data.detail || 'Audit completed'}`);
+            showToast(data.detail || 'Unable to complete host audit.');
         }
     } catch (e) {
         showToast('Host audit dispatched.');
@@ -1004,7 +1009,7 @@ async function runHostAudit() {
 }
 
 async function runTestDrill() {
-    showToast('🎯 Triggering test security drill...');
+    showToast('Triggering test security drill...');
     try {
         const resp = await fetch('/api/v1/host/drill', {
             method: 'POST',
@@ -1014,8 +1019,13 @@ async function runTestDrill() {
         if (resp.ok) {
             showToast('Test drill injected successfully.');
             await fetchAlertsFromApi();
+        } else if (resp.status === 401) {
+            showToast('Analyst clearance is required to launch test drills. Please sign in.');
+            openAuthModal();
+        } else if (resp.status === 403) {
+            showToast('Your current role does not have permission to launch test drills.');
         } else {
-            showToast(`Drill failed: ${data.detail || 'Error'}`);
+            showToast(data.detail || 'Test drill could not be started.');
         }
     } catch (e) {
         showToast('Drill request dispatched.');
@@ -1037,8 +1047,13 @@ async function clearAllAlerts() {
             saveSessionStorage();
             showToast(data.message || 'Alert history cleared and re-scanned.');
             await fetchAlertsFromApi();
+        } else if (resp.status === 401) {
+            showToast('Administrator clearance is required to clear alert records. Please sign in.');
+            openAuthModal();
+        } else if (resp.status === 403) {
+            showToast('Administrator permissions required to purge alert history.');
         } else {
-            showToast(`Clear failed: ${data.detail || 'Permission denied'}`);
+            showToast(data.detail || 'Permission denied.');
         }
     } catch (e) {
         showToast('Clear request dispatched.');
@@ -1165,6 +1180,11 @@ async function parsePlaygroundData() {
             closeAllModals();
             showToast(`Imported ${data.alerts_count} alerts!`);
             await fetchAlertsFromApi();
+        } else if (resp.status === 401) {
+            showPlaygroundError('Analyst clearance is required to import security logs. Please sign in with your access key.');
+            showToast('Analyst access required to import log files.');
+        } else if (resp.status === 403) {
+            showPlaygroundError('Your current role does not have permission to import logs.');
         } else {
             showPlaygroundError(data.detail || 'Upload failed.');
         }
@@ -1302,7 +1322,7 @@ async function checkAuthStatus() {
                 btnLogout.style.display = isAuth ? 'inline-flex' : 'none';
             }
             if (btnSubmit) {
-                btnSubmit.textContent = isAuth ? 'Switch Key' : 'Authenticate';
+                btnSubmit.textContent = isAuth ? 'Switch Key' : 'Sign In';
             }
         }
     } catch (e) {
@@ -1319,16 +1339,16 @@ async function submitAuthKey() {
     if (!key) {
         if (feedback) {
             feedback.className = 'auth-feedback-banner error';
-            feedback.innerHTML = '⚠️ Please enter an API key.';
+            feedback.innerHTML = '⚠️ Please enter your security access key.';
             feedback.style.display = 'flex';
         }
-        showToast('Please enter an API key', 'warning');
+        showToast('Please enter your security access key.');
         return;
     }
 
     if (btnSubmit) {
         btnSubmit.disabled = true;
-        btnSubmit.textContent = 'Authenticating...';
+        btnSubmit.textContent = 'Verifying key...';
     }
 
     try {
@@ -1343,10 +1363,10 @@ async function submitAuthKey() {
             sessionStorage.setItem('soc_api_key', key);
             if (feedback) {
                 feedback.className = 'auth-feedback-banner success';
-                feedback.innerHTML = `✅ Successfully authenticated as <strong>${data.role}</strong> (${data.username})!`;
+                feedback.innerHTML = `✅ Signed in successfully as <strong>${data.role}</strong> (${data.username}).`;
                 feedback.style.display = 'flex';
             }
-            showToast(`✅ Authenticated successfully as ${data.role}!`, 'success');
+            showToast(`Signed in successfully as ${data.role}.`);
             if (input) input.value = '';
             await checkAuthStatus();
             if (typeof initThreatStream === 'function') initThreatStream();
@@ -1355,13 +1375,13 @@ async function submitAuthKey() {
             }, 750);
         } else {
             const err = await resp.json().catch(() => ({}));
-            const msg = err.detail || 'Invalid credentials or API key format.';
+            const msg = err.detail || 'Access key not recognized. Please check your credentials.';
             if (feedback) {
                 feedback.className = 'auth-feedback-banner error';
                 feedback.innerHTML = `❌ ${escapeHtml(msg)}`;
                 feedback.style.display = 'flex';
             }
-            showToast(`❌ Authentication failed: ${msg}`, 'error');
+            showToast(`Sign in failed: ${msg}`);
         }
     } catch (e) {
         if (feedback) {
@@ -1369,11 +1389,11 @@ async function submitAuthKey() {
             feedback.innerHTML = `❌ Network connection failed: ${escapeHtml(e.message)}`;
             feedback.style.display = 'flex';
         }
-        showToast(`❌ Connection error: ${e.message}`, 'error');
+        showToast(`Connection error: ${e.message}`);
     } finally {
         if (btnSubmit) {
             btnSubmit.disabled = false;
-            btnSubmit.textContent = 'Authenticate';
+            btnSubmit.textContent = 'Sign In';
         }
     }
 }
@@ -1426,11 +1446,20 @@ function showToast(message) {
     const container = document.getElementById('toast-container');
     if (!container) return;
 
+    let icon = '🛡️';
+    let cleanMessage = (message || '').trim();
+    // Detect and extract any leading emoji so it never doubles with the shield icon
+    const emojiMatch = cleanMessage.match(/^(\p{Extended_Pictographic}+|\p{Emoji_Presentation}+)\s*/u);
+    if (emojiMatch) {
+        icon = emojiMatch[1];
+        cleanMessage = cleanMessage.slice(emojiMatch[0].length);
+    }
+
     const toast = document.createElement('div');
     toast.className = 'toast-message';
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
-    toast.innerHTML = `<span>🛡️</span><span>${escapeHtml(message)}</span>`;
+    toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(cleanMessage)}</span>`;
 
     container.appendChild(toast);
 

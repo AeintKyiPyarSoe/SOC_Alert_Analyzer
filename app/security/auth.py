@@ -84,14 +84,14 @@ def require_role(min_role: Role):
         if user.username in ("anonymous", "demo_viewer") and min_role != Role.VIEWER:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Authentication required for {min_role.value} operations. Please log in or provide 'X-API-Key' header.",
+                detail=f"Authentication required: Please sign in with an {min_role.value.capitalize()} access key to perform this action.",
                 headers={"WWW-Authenticate": "ApiKey"}
             )
 
         if ROLE_HIERARCHY[user.role] < ROLE_HIERARCHY[min_role]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions. Required role: '{min_role.value}', current role: '{user.role.value}'."
+                detail=f"Insufficient permissions: {min_role.value.capitalize()} privileges required (current level: {user.role.value.capitalize()})."
             )
         return user
     return role_checker
