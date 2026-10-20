@@ -275,6 +275,7 @@ async def upload_log_file(
                 curr_last = curr_last.replace(tzinfo=timezone.utc)
             existing.first_seen = min(curr_first, ev_ts)
             existing.last_seen = max(curr_last, ev_ts)
+            db.flush()
             total_ingested += 1
             continue
 
@@ -300,17 +301,9 @@ async def upload_log_file(
             first_seen=normalized["timestamp"],
             last_seen=normalized["timestamp"]
         )
-        batch.append(alert)
-        if len(batch) >= settings.DB_BATCH_SIZE:
-            db.add_all(batch)
-            db.flush()
-            total_ingested += len(batch)
-            batch = []
-
-    if batch:
-        db.add_all(batch)
+        db.add(alert)
         db.flush()
-        total_ingested += len(batch)
+        total_ingested += 1
 
     db.commit()
 
@@ -749,7 +742,13 @@ def load_sample_dataset_route(
     for raw in raw_events:
         raw.setdefault("telemetry_origin", "HISTORICAL_LOG")
         norm = AlertNormalizer.normalize(raw)
-        alert = Alert(id=uuid.uuid4(), **norm)
+        alert = Alert(
+            id=uuid.uuid4(),
+            occurrence_count=1,
+            first_seen=norm["timestamp"],
+            last_seen=norm["timestamp"],
+            **norm
+        )
         db.add(alert)
         created.append(alert)
 

@@ -34,9 +34,12 @@ class AlertNormalizer:
         destination_port = cls._sanitize_port(raw_event.get("destination_port"))
 
         # Sanitize Username
-        username = raw_event.get("username")
-        if username:
-            username = str(username).strip()
+        raw_user = raw_event.get("username")
+        if raw_user is not None:
+            user_clean = str(raw_user).strip()
+            username = user_clean if user_clean else None
+        else:
+            username = None
 
         # Detailed Description Synthesis (never leave ambiguous "Security Event Detected")
         raw_desc = (raw_event.get("description") or "").strip()

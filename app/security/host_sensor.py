@@ -648,7 +648,7 @@ class HostSecuritySensor:
                     curr_last = curr_last.replace(tzinfo=timezone.utc)
                 existing.first_seen = min(curr_first, ev_ts)
                 existing.last_seen = max(curr_last, ev_ts)
-                db.commit()
+                db.flush()
                 continue
 
             alert = Alert(
@@ -674,11 +674,14 @@ class HostSecuritySensor:
                 last_seen=normalized["timestamp"]
             )
             db.add(alert)
+            db.flush()
             created_alerts.append(alert)
 
         if created_alerts:
             db.commit()
             IncidentCorrelator.correlate_alerts(db)
+        elif raw_events:
+            db.commit()
 
         return created_alerts
 

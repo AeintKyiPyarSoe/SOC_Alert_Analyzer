@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Host Sensor Status & Event Loop Reliability**: Fixed `HostSecuritySensor.get_host_info()` to accurately report `stream_manager.host_monitoring_active` rather than `simulation_active`. Upgraded stream toggles to `async def` and stored application event loop references to guarantee dependable background task spawning on restart across execution contexts.
 - **Alert Recurrence Multi-Field Precision**: Refined deduplication matching in `host_sensor.py` and `routes.py` to evaluate `destination_ip` and `username`, preventing erroneous merging of distinct user accounts or network endpoints with identical generic rule descriptions.
 - **Hardened Fail-Closed Production Configuration**: Blocked insecure overrides by failing closed (`RuntimeError`) if `COOKIE_SECURE=false` or `DEMO_MODE=true` in `ENVIRONMENT=production`.
-- **Release Verification & Documentation**: Reconciled documentation, badges, changelog records, and evaluation metrics to accurately reflect **211 passing tests**, **86% (Linux) / 88% (Windows)** cross-platform test coverage, and v1.2.6 release status.
+- **Canonical Version Synchronization**: Unified package versioning across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` application metadata to strictly align with release `v1.2.6`.
+- **Recurrence Edge-Case Hardening**: Resolved intra-batch burst deduplication race conditions by enforcing transactional flushes in `host_sensor.py` and `routes.py`, hardened username whitespace sanitization to `None`, guaranteed boundary preservation for legacy null-timestamp records, and enforced non-merge isolation for resolved/closed alerts.
+- **Release Verification & Documentation**: Reconciled documentation, badges, changelog records, and evaluation metrics to accurately reflect **217 passing tests**, **86% (Linux) / 88% (Windows)** cross-platform test coverage, and v1.2.6 release status.
 
 ---
 

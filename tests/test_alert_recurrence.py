@@ -307,3 +307,224 @@ def test_distinct_usernames_not_merged(db_session: Session):
     assert created[0].username != created[1].username
     assert created[0].occurrence_count == 1
     assert created[1].occurrence_count == 1
+
+
+def test_intra_batch_repeated_events_deduplicated_monotonically(db_session: Session):
+    """Verify that multiple identical events within the same ingestion call are deduplicated."""
+    sensor = HostSecuritySensor()
+    base_t = datetime.now(timezone.utc) - timedelta(seconds=15)
+    t1 = base_t
+    t2 = base_t + timedelta(seconds=2)
+    t3 = base_t + timedelta(seconds=5)
+
+    raw_batch = [
+        {
+            "timestamp": t1.isoformat(),
+            "source_type": "Host_Process_Sensor",
+            "event_type": "burst_cmd_execution",
+            "description": "powershell.exe -enc burst_test",
+            "source_ip": "127.0.0.1",
+            "severity": "HIGH",
+            "telemetry_origin": "HOST_TELEMETRY"
+        },
+        {
+            "timestamp": t2.isoformat(),
+            "source_type": "Host_Process_Sensor",
+            "event_type": "burst_cmd_execution",
+            "description": "powershell.exe -enc burst_test",
+            "source_ip": "127.0.0.1",
+            "severity": "HIGH",
+            "telemetry_origin": "HOST_TELEMETRY"
+        },
+        {
+            "timestamp": t3.isoformat(),
+            "source_type": "Host_Process_Sensor",
+            "event_type": "burst_cmd_execution",
+            "description": "powershell.exe -enc burst_test",
+            "source_ip": "127.0.0.1",
+            "severity": "HIGH",
+            "telemetry_origin": "HOST_TELEMETRY"
+        }
+    ]
+
+    created = sensor._ingest_events(raw_batch, db_session)
+    assert len(created) == 1
+    alert = created[0]
+    assert alert.occurrence_count == 3
+    assert alert.first_seen.replace(tzinfo=timezone.utc) == t1
+    assert alert.last_seen.replace(tzinfo=timezone.utc) == t3
+
+
+def test_resolved_and_false_positive_alerts_do_not_merge(db_session: Session):
+    """Verify that an incoming event does NOT merge into a previously RESOLVED or FALSE_POSITIVE alert."""
+    sensor = HostSecuritySensor()
+    t_prev = datetime.now(timezone.utc) - timedelta(seconds=30)
+    resolved_alert = Alert(
+        id=uuid.uuid4(),
+        timestamp=t_prev,
+        source_type="Host_Process_Sensor",
+        telemetry_origin="HOST_TELEMETRY",
+        event_type="resolved_test_event",
+        description="Suspicious activity previously resolved",
+        source_ip="10.0.0.99",
+        severity="MEDIUM",
+        status="RESOLVED",
+        occurrence_count=1,
+        first_seen=t_prev,
+        last_seen=t_prev
+    )
+    db_session.add(resolved_alert)
+    db_session.commit()
+
+    # Ingest event with identical attributes while old alert is RESOLVED
+    t_new = datetime.now(timezone.utc) - timedelta(seconds=5)
+    raw = [{
+        "timestamp": t_new.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "resolved_test_event",
+        "description": "Suspicious activity previously resolved",
+        "source_ip": "10.0.0.99",
+        "severity": "MEDIUM",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    created = sensor._ingest_events(raw, db_session)
+    assert len(created) == 1
+    new_alert = created[0]
+
+    assert new_alert.id != resolved_alert.id
+    assert new_alert.status == "OPEN"
+    assert new_alert.occurrence_count == 1
+
+    # Verify resolved alert remains untouched
+    db_session.refresh(resolved_alert)
+    assert resolved_alert.occurrence_count == 1
+    assert resolved_alert.status == "RESOLVED"
+
+
+def test_none_vs_explicit_field_isolation(db_session: Session):
+    """Verify that None/NULL fields and explicitly populated fields never accidentally cross-match."""
+    sensor = HostSecuritySensor()
+    t = datetime.now(timezone.utc) - timedelta(seconds=10)
+
+    # 1. Base alert with destination_ip=None, username=None
+    base_raw = [{
+        "timestamp": t.isoformat(),
+        "source_type": "Firewall",
+        "event_type": "field_isolation_test",
+        "description": "Port scan detected",
+        "source_ip": "192.168.1.10",
+        "destination_ip": None,
+        "username": None,
+        "severity": "LOW",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    created_base = sensor._ingest_events(base_raw, db_session)
+    assert len(created_base) == 1
+    base_alert = created_base[0]
+
+    # 2. Event with same source_ip and description, but explicit destination_ip
+    dest_event = [{
+        "timestamp": t.isoformat(),
+        "source_type": "Firewall",
+        "event_type": "field_isolation_test",
+        "description": "Port scan detected",
+        "source_ip": "192.168.1.10",
+        "destination_ip": "192.168.1.254",
+        "username": None,
+        "severity": "LOW",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    created_dest = sensor._ingest_events(dest_event, db_session)
+    assert len(created_dest) == 1
+    assert created_dest[0].id != base_alert.id
+
+    # 3. Event with same attributes as base (both None) -> MUST match base alert
+    match_event = [{
+        "timestamp": (t + timedelta(seconds=2)).isoformat(),
+        "source_type": "Firewall",
+        "event_type": "field_isolation_test",
+        "description": "Port scan detected",
+        "source_ip": "192.168.1.10",
+        "destination_ip": None,
+        "username": None,
+        "severity": "LOW",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    created_match = sensor._ingest_events(match_event, db_session)
+    assert len(created_match) == 0  # Deduplicated into base_alert
+    db_session.refresh(base_alert)
+    assert base_alert.occurrence_count == 2
+
+
+def test_legacy_null_first_seen_and_last_seen_handled_gracefully(db_session: Session):
+    """Verify that legacy records with null first_seen/last_seen are safely recovered during recurrence."""
+    sensor = HostSecuritySensor()
+    t_legacy = datetime.now(timezone.utc) - timedelta(seconds=60)
+    legacy = Alert(
+        id=uuid.uuid4(),
+        timestamp=t_legacy,
+        source_type="Host_Process_Sensor",
+        telemetry_origin="HOST_TELEMETRY",
+        event_type="legacy_null_ts_test",
+        description="Legacy event with null boundaries",
+        source_ip="127.0.0.1",
+        severity="MEDIUM",
+        status="OPEN",
+        occurrence_count=1,
+        first_seen=None,
+        last_seen=None
+    )
+    db_session.add(legacy)
+    db_session.commit()
+
+    t_new = datetime.now(timezone.utc) - timedelta(seconds=10)
+    raw = [{
+        "timestamp": t_new.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "legacy_null_ts_test",
+        "description": "Legacy event with null boundaries",
+        "source_ip": "127.0.0.1",
+        "severity": "MEDIUM",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+
+    created = sensor._ingest_events(raw, db_session)
+    assert len(created) == 0  # Successfully merged
+    db_session.refresh(legacy)
+    assert legacy.occurrence_count == 2
+    assert legacy.first_seen.replace(tzinfo=timezone.utc) == t_legacy
+    assert legacy.last_seen.replace(tzinfo=timezone.utc) == t_new
+
+
+def test_whitespace_and_empty_username_normalized_to_none(db_session: Session):
+    """Verify that empty/whitespace usernames normalize to None and deduplicate properly."""
+    sensor = HostSecuritySensor()
+    t = datetime.now(timezone.utc) - timedelta(seconds=20)
+    raw1 = [{
+        "timestamp": t.isoformat(),
+        "source_type": "Linux_Auth",
+        "event_type": "empty_user_test",
+        "description": "Auth attempt without user",
+        "source_ip": "10.0.0.40",
+        "username": "   ",
+        "severity": "LOW",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    c1 = sensor._ingest_events(raw1, db_session)
+    assert len(c1) == 1
+    assert c1[0].username is None
+
+    raw2 = [{
+        "timestamp": (t + timedelta(seconds=5)).isoformat(),
+        "source_type": "Linux_Auth",
+        "event_type": "empty_user_test",
+        "description": "Auth attempt without user",
+        "source_ip": "10.0.0.40",
+        "username": "",
+        "severity": "LOW",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    c2 = sensor._ingest_events(raw2, db_session)
+    assert len(c2) == 0  # Merged!
+    db_session.refresh(c1[0])
+    assert c1[0].occurrence_count == 2

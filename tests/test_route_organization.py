@@ -61,3 +61,14 @@ def test_host_status_reports_monitoring_active():
     # Restore default
     stream_manager.host_monitoring_active = True
     stream_manager.simulation_active = False
+
+
+def test_canonical_version_consistency():
+    """Verify that canonical version is strictly synchronized across app, config, and main."""
+    import app
+    from app.config import settings
+    from app.main import app as fastapi_app
+
+    assert settings.VERSION == "1.2.6"
+    assert app.__version__ == "1.2.6"
+    assert fastapi_app.version == "1.2.6"
