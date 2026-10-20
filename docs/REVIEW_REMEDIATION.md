@@ -3,7 +3,7 @@
 **Date**: October 20, 2026  
 **Target Repository**: [SOC_Alert_Analyzer](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer)  
 **Execution Environment**: Local Workspace (Source of Truth)  
-**Final Test Status**: **115 passed, 0 failed (100% passing rate)**  
+**Final Test Status**: **139 passed, 0 failed (100% passing rate, 79% coverage)**  
 **Code Quality**: Flake8: 0 fatal/syntax errors (`E9,F63,F7,F82`); Bandit AST SAST: 0 Medium/High issues; Pip-Audit: 0 known vulnerabilities  
 
 ---
@@ -133,4 +133,53 @@ All local UI styling and interactions were preserved without regressions:
 1. **User-Space Sensor Architecture**: The native host sensor is intentionally designed as a zero-dependency user-space auditor. It does not replace enterprise kernel-level EDR agents (CrowdStrike, SentinelOne) or Windows Sysmon.
 2. **In-Memory Session Store**: Server sessions are currently tracked in memory with thread-safe locking and SHA-256 token hashing. In horizontally scaled multi-worker deployments behind load balancers, an external session store (Redis or PostgreSQL session table) should be configured.
 3. **PyInstaller Antivirus False Positives**: As with all single-file packaged Python executables, heuristic antivirus engines may flag unpacked binaries due to lack of an EV code-signing certificate. Users should verify binaries using published SHA-256 checksums in `dist/SHA256SUMS.txt`.
+
+---
+
+## 7. Version 1.2.3 Production-Readiness & Benchmark Hardening Audit
+
+### Executive Overview (v1.2.3)
+Following the v1.2.2 stabilization, SOC Alert Analyzer underwent a rigorous security production-readiness hardening, detection resilience engineering, and empirical evaluation benchmark expansion. The release elevates automated test coverage to **139 passing tests (100%)** with **79% code coverage**, verifies 0 static AST security defects, and validates a newly built standalone Windows executable.
+
+### Summary of Hardening Delivered in v1.2.3
+1. **Authentication-Disabled Security**:
+   - Strictly forbidden in `ENVIRONMENT=production`. In development, disabling authentication requires explicit `ALLOW_INSECURE_AUTH_DISABLED=true`.
+   - Access without authentication is strictly confined to verified loopback sockets (`127.0.0.1`, `::1`, `localhost`, `testclient`). Remote requests receive an immediate `403 Forbidden`. External spoofable headers (`Host`, `X-Forwarded-For`, `X-Real-IP`) are ignored.
+2. **RFC 3986 Origin & CORS Validation**:
+   - Replaced permissive localhost port allowance with strict scheme, host, and port validation.
+   - Origins with URI userinfo, paths, queries, or fragments are rejected as malformed.
+   - Allowed localhost origins are strictly constrained to standard web ports (80, 443, 8080) and launcher ranges (8000–8099).
+3. **Atomic Session Rotation & Bounded Memory**:
+   - Session rotation (`rotate_session`) is synchronized under mutex locks to eliminate session fixation race conditions.
+   - Bounded memory limits (`MAX_SESSIONS = 10000`, `MAX_WS_TICKETS = 5000`) and automatic pruning of stale attempts and lockouts prevent memory exhaustion.
+4. **WebSocket Stream RBAC**:
+   - Fixed threat telemetry broadcast leakage: `HOST_TELEMETRY` and `REAL_THREAT` events are broadcast strictly to authenticated `ADMIN` and `ANALYST` clients.
+5. **Launcher Single-Worker Enforcement**:
+   - Configured `launcher.py` to reject `--workers > 1` at startup to prevent split-brain session tracking and WebSocket ticketing failures across unshared worker memories.
+6. **Detection Resiliency & Parser Precision**:
+   - Correlator pre-sorts alerts chronologically before time-window clustering, guaranteeing deterministic grouping under out-of-order log ingestion.
+   - Suricata parser DoS detection upgraded to word-boundary regex (`\bdos\b`) and contextual phrases, eliminating false positives on benign words.
+   - Risk scoring clamped to 0–100 with defensive guards against `NaN` and `Inf` float confidence values.
+   - Refined MITRE ATT&CK technique mappings (`T1003`, `T1105`, `T1204.002`, `T1490`, `T1036.005`) and enhanced host sensor behavioral detections for LSASS dumping, `certutil` download cradles, and firewall disablement.
+7. **Empirical Detection Evaluation Benchmark**:
+   - Implemented 30-scenario held-out benchmark (15 malicious threats, 15 difficult benign edge cases) plus alert deduplication testing (`tests/detection_eval/test_eval_held_out_benchmark.py`).
+   - Combined benchmark results across 50 scenarios (25 malicious, 25 benign): **100% Precision, 100% Recall, 100% F1 Score, 0.0% False Positive Rate**.
+   - Fully reproducible via `python scripts/evaluate_detection.py`.
+
+### Final Test Suite & Quality Verification (v1.2.3)
+- **Total Automated Pytest Tests**: **139 passed, 0 failed (100% pass rate in 20.93s)**
+- **Test Coverage**: **79% overall code coverage**
+- **Static Code Analysis (Ruff & Flake8)**: 0 errors (`E9,F63,F7,F82`)
+- **AST Application Security Testing (Bandit)**: 0 High/Medium security issues (`bandit -r app/ -ll -ii -x app/static`)
+- **Dependency Security Audit (Pip-Audit)**: 0 known vulnerabilities
+
+### Hardened Standalone Windows Executable Build (`v1.2.3`)
+- **Build Tool**: PyInstaller 6.22.2 (`SOC_Alert_Analyzer.spec`)
+- **Binary**: `dist/SOC_Alert_Analyzer.exe`
+- **Architecture**: Windows 64-bit Intel
+- **Size**: 53,993,470 bytes (~51.5 MB)
+- **SHA-256 Checksum**: `8b14680499e985b6f2823cad397f7e061c098c97023c2a686fcdf25c11133170`
+- **Runtime Smoke Test**: Passed (`--help` CLI invocation verified)
+- **Live HTTP API Smoke Test**: Passed (initialized in 4s on port 8012; `/api/v1/auth/me` validated)
+- **Release Verification File**: `dist/SHA256SUMS.txt`
 

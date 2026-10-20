@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3] - 2026-10-20
+
+### Added
+- **Authentication-Disabled Security**: Restrict unauthenticated mode strictly to verified loopback sockets (`127.0.0.1`, `::1`, `localhost`, `testclient`). Remote access is rejected with `403 Forbidden`. External spoofable headers (`Host`, `X-Forwarded-For`) are disregarded for authentication.
+- **Strict Startup Configuration**: Prohibit `AUTH_ENABLED=False` in `ENVIRONMENT=production` and require explicit `ALLOW_INSECURE_AUTH_DISABLED=true` in development.
+- **Origin & CORS Validation (RFC 3986)**: Reject malformed origins containing paths, queries, fragments, or user credentials. Restrict localhost origins to standard web ports (80, 443, 8080) and launcher ranges (8000–8099). Disallow wildcard `*` with credentials.
+- **Atomic Session Rotation**: Thread-safe session rotation under mutex locks to prevent fixation race conditions. Added bounded memory stores (`MAX_SESSIONS = 10000`, `MAX_WS_TICKETS = 5000`) and automatic pruning of stale attempts and lockouts.
+- **Threat Stream RBAC**: Granular WebSocket stream filtering ensuring raw `HOST_TELEMETRY` and `REAL_THREAT` events are broadcast strictly to authenticated `ADMIN` and `ANALYST` clients.
+- **Single-Worker Launcher Guard**: Added explicit guard in `launcher.py` rejecting `--workers > 1` to prevent unshared in-memory session and ticket desynchronization across multi-worker architectures.
+- **Held-Out Detection Benchmark**: Implemented 30-scenario held-out evaluation dataset (15 malicious threats, 15 difficult benign edge cases) plus alert deduplication testing (`tests/detection_eval/test_eval_held_out_benchmark.py`).
+- **Empirical Detection Evaluation Runner**: Added standalone evaluation script (`scripts/evaluate_detection.py`) generating confusion matrices across 50 total scenarios (100% Precision, 100% Recall, 0% FPR).
+- **Hardened Standalone Windows Executable**: Rebuilt `SOC_Alert_Analyzer.exe` with verified background HTTP API smoke tests and updated SHA-256 release checksum (`8b14680499e985b6f2823cad397f7e061c098c97023c2a686fcdf25c11133170`).
+
+### Changed
+- **Correlator Ingestion Sorting**: Chronologically sort alerts before time-window clustering to guarantee deterministic incident aggregation under out-of-order log ingestion.
+- **Suricata Parser Precision**: Replaced naive substring matching (`"dos"`) with word-boundary regular expressions (`\bdos\b`) and contextual phrases, eliminating false positives on benign words like "shadows" or "paradox".
+- **Risk Scoring Resilience**: Clamped composite risk scores strictly between 0 and 100 with defensive guards against `NaN` and `Inf` float confidence inputs, providing safe defaults for missing event types.
+- **MITRE ATT&CK & Host Sensor Refinements**: Refined mappings for `T1003` (OS Credential Dumping), `T1105` (Ingress Tool Transfer), `T1204.002` (Malicious File), `T1490` (Inhibit System Recovery), and `T1036.005` (Masquerading). Added behavioral detection for LSASS memory dumps, `certutil` download cradles, and firewall disablement.
+
+### Fixed
+- Expanded automated test suite from 115 to **139 passed tests (100%)** with **79% code coverage**.
+- Resolved documentation discrepancies, synchronizing all architectural specifications with actual implementation state.
+
+---
+
 ## [1.2.2] - 2026-10-20
 
 ### Added

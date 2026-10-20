@@ -38,5 +38,6 @@ Desktop.ini
 .idea/
 *.swp
 
-dist/
+dist/*
+!dist/SHA256SUMS.txt
 
