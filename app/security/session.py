@@ -22,11 +22,14 @@ class SessionManager:
     Features:
       - Opaque random tokens (never expose API keys in browser cookies or URLs)
       - SHA-256 hashing of session tokens in memory
-      - Session expiration and rotation to prevent session fixation
-      - Cryptographic CSRF token generation and validation
+      - Thread-safe, atomic session rotation to prevent session fixation
+      - Constant-time cryptographic CSRF token validation
       - Short-lived, single-use WebSocket connection tickets
-      - Thread-safe storage with automatic stale session pruning
+      - Thread-safe bounded storage with automatic stale session, ticket, and rate-limit pruning
     """
+
+    MAX_SESSIONS: int = 10000
+    MAX_WS_TICKETS: int = 5000
 
     def __init__(self):
         self._sessions: Dict[str, SessionData] = {}
@@ -68,6 +71,11 @@ class SessionManager:
 
         with self._lock:
             self._prune_expired_locked(now)
+            # Enforce capacity bound to prevent memory exhaustion
+            if len(self._sessions) >= self.MAX_SESSIONS:
+                oldest_hash = min(self._sessions, key=lambda k: self._sessions[k].created_at)
+                del self._sessions[oldest_hash]
+
             self._sessions[token_hash] = session_data
 
         return session_token, csrf_token
@@ -93,14 +101,34 @@ class SessionManager:
 
     def rotate_session(self, old_session_token: str) -> Optional[Tuple[str, str]]:
         """
-        Rotates session identifier to prevent session fixation upon privilege elevation.
+        Atomically rotates session identifier to prevent session fixation upon privilege changes.
+        Thread-safe under lock: the old session is consumed and replaced in a single atomic step.
         """
-        session = self.get_session(old_session_token)
-        if not session:
+        if not old_session_token or not isinstance(old_session_token, str):
             return None
 
-        self.revoke_session(old_session_token)
-        return self.create_session(session.username, session.role)
+        old_hash = self._hash_token(old_session_token)
+        now = time.time()
+
+        with self._lock:
+            old_session = self._sessions.pop(old_hash, None)
+            if not old_session or now > old_session.expires_at:
+                return None
+
+            new_session_token = f"soc_{secrets.token_urlsafe(32)}"
+            new_csrf_token = secrets.token_urlsafe(32)
+            new_hash = self._hash_token(new_session_token)
+
+            self._prune_expired_locked(now)
+            self._sessions[new_hash] = SessionData(
+                session_id_hash=new_hash,
+                username=old_session.username,
+                role=old_session.role,
+                csrf_token=new_csrf_token,
+                created_at=now,
+                expires_at=old_session.expires_at
+            )
+            return new_session_token, new_csrf_token
 
     def revoke_session(self, session_token: Optional[str]) -> bool:
         """
@@ -158,6 +186,10 @@ class SessionManager:
 
         with self._lock:
             self._prune_tickets_locked(now)
+            if len(self._ws_tickets) >= self.MAX_WS_TICKETS:
+                oldest_ticket = min(self._ws_tickets, key=lambda k: self._ws_tickets[k]["expires_at"])
+                del self._ws_tickets[oldest_ticket]
+
             self._ws_tickets[ticket] = {
                 "username": username,
                 "role": role,
@@ -189,6 +221,7 @@ class SessionManager:
         """
         now = time.time()
         with self._lock:
+            self._prune_stale_attempts_and_lockouts_locked(now)
             lockout_until = self._lockouts.get(client_ip)
             if lockout_until:
                 if now < lockout_until:
@@ -207,17 +240,17 @@ class SessionManager:
     ) -> bool:
         """
         Records an authentication attempt. If failures exceed max_attempts within window,
-        temporarily locks out the IP for lockout_seconds.
+        temporarily locks out the IP for lockout_seconds. Automatically cleans up stale IP entries.
         """
         now = time.time()
         with self._lock:
+            self._prune_stale_attempts_and_lockouts_locked(now, window_seconds)
             if success:
                 self._login_attempts.pop(client_ip, None)
                 self._lockouts.pop(client_ip, None)
                 return True
 
             attempts = self._login_attempts.get(client_ip, [])
-            # Prune attempts outside window
             attempts = [t for t in attempts if now - t <= window_seconds]
             attempts.append(now)
             self._login_attempts[client_ip] = attempts
@@ -238,5 +271,21 @@ class SessionManager:
         expired = [t for t, rec in self._ws_tickets.items() if now > rec["expires_at"]]
         for t in expired:
             del self._ws_tickets[t]
+
+    def _prune_stale_attempts_and_lockouts_locked(self, now: float, window_seconds: int = 60):
+        """Internal helper to clean up expired lockouts and stale login attempts across all IPs."""
+        expired_lockouts = [ip for ip, exp in self._lockouts.items() if now >= exp]
+        for ip in expired_lockouts:
+            del self._lockouts[ip]
+
+        stale_ips = []
+        for ip, attempts in self._login_attempts.items():
+            valid = [t for t in attempts if now - t <= window_seconds]
+            if not valid:
+                stale_ips.append(ip)
+            else:
+                self._login_attempts[ip] = valid
+        for ip in stale_ips:
+            del self._login_attempts[ip]
 
 session_manager = SessionManager()

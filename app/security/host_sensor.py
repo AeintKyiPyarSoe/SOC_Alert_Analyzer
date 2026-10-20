@@ -50,7 +50,7 @@ class HostSecuritySensor:
         "mimikatz.exe", "mimikatz", "chisel.exe", "chisel", "nmap.exe", "nmap",
         "masscan.exe", "masscan", "hydra.exe", "hydra", "socat", "responder.py",
         "bloodhound.exe", "bloodhound", "hashcat.exe", "hashcat", "cain.exe", "cain",
-        "psexec.exe", "psexec"
+        "psexec.exe", "psexec", "xmrig.exe", "xmrig"
     }
 
     # High-risk parent-child execution chains
@@ -305,6 +305,61 @@ class HostSecuritySensor:
                             "username": username,
                             "raw_log": f"PID: {pid} | Exe: {exe}"
                         })
+
+            # 7. Behavioral: Memory / Credential Dumping Commands (T1003)
+            for cred_pattern in self.CREDENTIAL_DUMPING_PATTERNS:
+                if cred_pattern in cleaned_cmd or cred_pattern in cmdline or ("procdump" in name and "-ma" in cmdline):
+                    sig = f"cred_dump_{cred_pattern}_{pid}"
+                    if sig not in self.seen_signatures:
+                        self.seen_signatures.add(sig)
+                        events.append({
+                            "source_type": "Host_Process_Sensor",
+                            "telemetry_origin": "HOST_TELEMETRY",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "event_type": "windows_suspicious_process",
+                            "mitre_technique": "T1003",
+                            "description": f"Credential Access: Memory dumping activity matching '{cred_pattern}' (PID: {pid})",
+                            "source_ip": "127.0.0.1",
+                            "destination_ip": None,
+                            "username": username,
+                            "raw_log": f"PID: {pid} | Cmd: {cmdline}"
+                        })
+
+            # 8. LOLBins: Ingress Tool Transfer via certutil (T1105)
+            if "certutil" in name and ("-urlcache" in cmdline or "-split" in cmdline):
+                sig = f"certutil_download_{pid}"
+                if sig not in self.seen_signatures:
+                    self.seen_signatures.add(sig)
+                    events.append({
+                        "source_type": "Host_Process_Sensor",
+                        "telemetry_origin": "HOST_TELEMETRY",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "event_type": "suspicious_command",
+                        "mitre_technique": "T1105",
+                        "description": f"Ingress Tool Transfer: certutil downloading remote payload (PID: {pid})",
+                        "source_ip": "127.0.0.1",
+                        "destination_ip": None,
+                        "username": username,
+                        "raw_log": f"PID: {pid} | Cmd: {cmdline}"
+                    })
+
+            # 9. Defense Evasion: Impair Defenses via netsh firewall disable (T1562.001)
+            if "netsh" in name and "advfirewall" in cmdline and "state off" in cmdline:
+                sig = f"netsh_fw_off_{pid}"
+                if sig not in self.seen_signatures:
+                    self.seen_signatures.add(sig)
+                    events.append({
+                        "source_type": "Host_Process_Sensor",
+                        "telemetry_origin": "HOST_TELEMETRY",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "event_type": "host_firewall_disabled",
+                        "mitre_technique": "T1562.001",
+                        "description": f"Impair Defenses: Disabling host firewall via netsh (PID: {pid})",
+                        "source_ip": "127.0.0.1",
+                        "destination_ip": None,
+                        "username": username,
+                        "raw_log": f"PID: {pid} | Cmd: {cmdline}"
+                    })
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass

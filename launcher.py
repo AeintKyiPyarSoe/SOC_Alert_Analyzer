@@ -158,6 +158,12 @@ def main():
     multiprocessing.freeze_support()
     args = parse_arguments()
 
+    if args.workers > 1:
+        print("[!] Error: Multi-worker execution (> 1 worker) is unsupported with in-memory session and WebSocket state.")
+        print("[!] Multi-process workers cause split-brain session state and authentication failures.")
+        print("[!] Please run with --workers 1 or deploy with a centralized session store.")
+        sys.exit(1)
+
     host = args.host
     requested_port = args.port
 

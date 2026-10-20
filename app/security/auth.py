@@ -1,4 +1,5 @@
 import hmac
+import ipaddress
 import urllib.parse
 from enum import Enum
 from typing import Optional
@@ -6,7 +7,7 @@ from pydantic import BaseModel
 from fastapi import Request, WebSocket, HTTPException, Security, status, Depends
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from app.config import settings
-from app.security.session import session_manager, SessionData
+from app.security.session import session_manager
 
 class Role(str, Enum):
     ADMIN = "ADMIN"
@@ -31,6 +32,22 @@ def _constant_time_compare(val1: str, val2: str) -> bool:
     """Safely compare secret keys without timing side-channel leakage."""
     return hmac.compare_digest(val1.encode("utf-8"), val2.encode("utf-8"))
 
+def is_local_client(client_host: Optional[str]) -> bool:
+    """
+    Verifies that a network connection originates strictly from local loopback.
+    Does NOT trust client-supplied Host or X-Forwarded-For headers.
+    """
+    if not client_host or not isinstance(client_host, str):
+        return False
+    host = client_host.strip().lower()
+    if host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback
+    except ValueError:
+        return False
+
 def validate_token(token: Optional[str]) -> Optional[User]:
     """Validates an API token or key and returns the corresponding User, or None."""
     if not token or not isinstance(token, str):
@@ -52,8 +69,17 @@ def get_current_user(
       1. Direct API Key header (X-API-Key or Bearer token for programmatic API clients)
       2. Server-side session token cookie ('soc_session')
       3. Default to VIEWER (demo mode or unauthenticated guest)
+    
+    If AUTH_ENABLED is disabled, administrator privileges are strictly restricted to
+    verified local loopback connections. Arbitrary remote clients are rejected.
     """
     if not settings.AUTH_ENABLED:
+        client_host = request.client.host if request.client else None
+        if not is_local_client(client_host):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Authentication-disabled mode is strictly restricted to verified local loopback connections."
+            )
         return User(username="admin_local", role=Role.ADMIN, auth_type="local")
 
     # 1. Check programmatic API Key headers
@@ -137,8 +163,8 @@ def is_allowed_origin(origin: Optional[str], host_header: Optional[str] = None) 
     """
     Validates WebSocket origin header against allowed hosts to prevent cross-site WebSocket hijacking (CSWSH).
     Validates scheme, hostname, and port strictly.
-    Rejects malformed origins, arbitrary localhost ports, and untrusted cross-origins.
-    Does not rely on untrusted Host headers.
+    Rejects malformed origins (userinfo, paths, queries, fragments), arbitrary localhost ports,
+    and untrusted cross-origins. Does not rely on untrusted Host headers.
     """
     if origin is None:
         # RFC 6455: Native desktop applications / CLI clients without browser Origin header
@@ -153,6 +179,12 @@ def is_allowed_origin(origin: Optional[str], host_header: Optional[str] = None) 
         scheme = parsed.scheme.lower()
         # Scheme MUST be standard HTTP or HTTPS
         if scheme not in ("http", "https"):
+            return False
+
+        # Reject malformed origins containing credentials, path components, queries, or fragments
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return False
+        if parsed.path and parsed.path not in ("", "/"):
             return False
 
         origin_host = parsed.hostname
@@ -211,6 +243,9 @@ async def authenticate_websocket(websocket: WebSocket) -> Optional[User]:
         return None
 
     if not settings.AUTH_ENABLED:
+        client_host = websocket.client.host if websocket.client else None
+        if not is_local_client(client_host):
+            return None
         return User(username="admin_local", role=Role.ADMIN, auth_type="local")
 
     # 1. Single-use short-lived connection ticket

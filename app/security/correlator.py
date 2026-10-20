@@ -20,6 +20,7 @@ class IncidentCorrelator:
          entity signature and within the sliding correlation window.
       3. Deduplication: prevents redundant incident creation and avoids duplicate junction links.
       4. Accurate IP context: properly classifies public vs private network origins.
+      5. Out-of-order timestamp resiliency: chronologically sorts alerts before time-window clustering.
     """
 
     @classmethod
@@ -86,8 +87,10 @@ class IncidentCorrelator:
         if not alerts:
             return clusters
 
-        current_cluster = [alerts[0]]
-        for a in alerts[1:]:
+        # Chronologically sort alerts before clustering to handle out-of-order ingestion
+        sorted_alerts = sorted(alerts, key=lambda a: a.timestamp)
+        current_cluster = [sorted_alerts[0]]
+        for a in sorted_alerts[1:]:
             if a.timestamp - current_cluster[-1].timestamp <= max_gap:
                 current_cluster.append(a)
             else:
@@ -109,7 +112,6 @@ class IncidentCorrelator:
         Searches for an active OPEN incident matching this cluster's structured correlation key
         whose timeframe is adjacent (within window_seconds).
         """
-        # 1. Check in-memory batch cache first to prevent duplicate incidents in same run
         window_delta = timedelta(seconds=window_seconds)
         valid_ts = [a.timestamp for a in cluster if a.is_valid_timestamp]
         cluster_start = min(valid_ts) if valid_ts else cluster[0].timestamp
@@ -128,7 +130,6 @@ class IncidentCorrelator:
         clean_event = first_alert.event_type.replace("_", " ").title()
         expected_title_prefix = f"{clean_event} Incident"
 
-        # 2. Query DB: Primary match via structured correlation_key, fallback to legacy title prefix
         candidates = (
             db.query(Incident)
             .filter(
@@ -172,7 +173,6 @@ class IncidentCorrelator:
             cluster_first_seen = min(valid_timestamps)
             cluster_last_seen = max(valid_timestamps)
         else:
-            # All alerts had malformed/invalid event timestamps: fall back to ingestion timestamps
             cluster_first_seen = min(a.created_at for a in cluster)
             cluster_last_seen = max(a.created_at for a in cluster)
 
@@ -193,12 +193,10 @@ class IncidentCorrelator:
             if not incident.correlation_key:
                 incident.correlation_key = correlation_key
 
-            # Only expand incident timeline if valid event timestamps exist
             if valid_timestamps:
                 incident.first_seen = min(incident.first_seen, cluster_first_seen)
                 incident.last_seen = max(incident.last_seen, cluster_last_seen)
 
-            # Link new alerts, preventing duplicate junction entries
             new_links = 0
             for a in cluster:
                 already_linked = db.query(IncidentAlert).filter(
@@ -211,7 +209,6 @@ class IncidentCorrelator:
 
             db.flush()
 
-            # Recalculate total alert count from DB
             total_count = (
                 db.query(func.count(IncidentAlert.alert_id))
                 .filter(IncidentAlert.incident_id == incident.id)
@@ -219,7 +216,6 @@ class IncidentCorrelator:
             )
             incident.alert_count = total_count
 
-            # Re-evaluate compound risk score
             compound_risk, _, _ = RiskEngine.calculate_risk(
                 event_type=first_alert.event_type,
                 source_type=first_alert.source_type,
@@ -237,7 +233,6 @@ class IncidentCorrelator:
                 f"{incident.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC')}."
             )
 
-            # Escalate member alerts if compound risk increased
             for a in cluster:
                 if compound_risk > a.risk_score:
                     a.risk_score = compound_risk
