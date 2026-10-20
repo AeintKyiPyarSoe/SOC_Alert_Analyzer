@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance & Internal Improvements
 - **High-Performance Ingestion & Batched Transaction Resilience**: Replaced individual `db.flush()` calls on every event in `app/api/routes.py` with an in-memory active candidate index for $O(1)$ intra-batch recurrence deduplication and bounded chunked flushes (`DB_BATCH_SIZE = 250`). Wrapped the entire ingestion, flushing, and correlation pipeline in an atomic database transaction with automatic `db.rollback()` on failure, eliminating partial imports, dirty session states, and excessive round-trips. Delivered an **8.3x throughput speedup** (from ~904 to ~7510 events/sec on 1,000-event datasets).
 - **Test Suite & CI Matrix Expansion**: Expanded automated test suite to **230 passing tests** across 6 platform/Python configurations (Ubuntu/Windows on Python 3.11, 3.12, 3.13) + Security Audit.
+- **Hardened Windows Standalone Executable Build & Verification**: Built standalone executable `SOC_Alert_Analyzer.exe` (26,542,217 bytes) on GitHub Actions Windows release runner and verified with SHA-256 digest `87af9cf4dd739b86ad7dd679d8ba0d7ada522477ef40643668a7506c8721a725`.
 
 ---
 

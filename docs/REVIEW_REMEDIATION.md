@@ -228,7 +228,8 @@ Following the v1.2.5 baseline, SOC Alert Analyzer completed a comprehensive four
 - **Official Build Workflow**: `.github/workflows/release-exe.yml` on `windows-2022` runner
 - **Artifact Path**: `dist/SOC_Alert_Analyzer.exe`
 - **Architecture**: Windows x86_64
-- **Size**: ~26.5 MB with UPX compression
+- **Size**: 26,542,217 bytes (~25.3 MB with UPX compression)
+- **SHA-256 Digest**: `87af9cf4dd739b86ad7dd679d8ba0d7ada522477ef40643668a7506c8721a725`
 - **Dual Checksum Verification**: Verified identically via CertUtil, Python `hashlib`, and `scripts/verify_release_checksum.py`
 - **Live Smoke-Test Suite**: 100% passed (CLI `--help`, web dashboard `GET /`, bundled static CSS/JS, unauthenticated VIEWER RBAC, host sensor `monitoring_active=True`, OpenAPI `1.2.7`, authenticated ANALYST API key, sample Wazuh data loader, SQLite DB persistence, and dashboard stats telemetry isolation)
 
