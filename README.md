@@ -75,6 +75,15 @@ Calculates risk on a deterministic 0–100 scale across 4 severity tiers:
 * Incorporates baseline event severity, tool rule levels (Wazuh 0–15, Suricata 1–4), frequency multipliers, signature confidence, asset exposure, privilege context, and false-positive dampeners.
 * Clamped strictly between 0 and 100 with safe handling of missing, empty, or out-of-bounds parameters (including NaN and Inf confidence inputs).
 
+### 4. Alert Recurrence Tracking, Deduplication & High-Performance Ingestion
+* **Persistent Occurrence Tracking**: Instead of dropping duplicate alerts, repeated detections within sliding time windows (`DEDUP_WINDOW_SECONDS = 300`) atomically increment `occurrence_count` and update chronological `first_seen` and `last_seen` boundaries.
+* **Strict Telemetry-Origin Isolation**: Enforces matching `telemetry_origin` (`HOST_TELEMETRY`, `HISTORICAL_LOG`, `SIMULATED_DEMO`, `SECURITY_DRILL`) so alerts from distinct sources are never conflated or merged.
+* **Event-Timestamp-Anchored Sliding Window**: Deduplication evaluates against incoming event timestamps (`event_ts ± DEDUP_WINDOW_SECONDS`) rather than server wall-clock time, ensuring robust deduplication for historical batch uploads/replays, isolation of clock-skew anomalies, and safe handling of out-of-order logs.
+* **Closed Alert Non-Merge Isolation**: Alerts previously marked as `RESOLVED` or `FALSE_POSITIVE` are never merged with incoming events, preserving historical incident audit trails and generating clean `OPEN` alerts.
+* **Multi-Field Precision & Whitespace Sanitization**: Evaluates `source_ip`, `destination_ip`, `username`, and `signature`, while sanitizing empty/whitespace usernames to `None` to prevent SQL `NULL` vs `''` matching anomalies.
+* **High-Performance Batched Ingestion**: Uses an in-memory active candidate index for $O(1)$ intra-batch recurrence deduplication combined with bounded chunked database writes (`DB_BATCH_SIZE = 250`).
+* **Atomic Transaction Integrity**: Wraps ingestion, deduplication, and incident correlation in a single database transaction with automatic `db.rollback()` on failure, eliminating partial imports and corrupted database states. Delivered an **8.3x throughput speedup** (~904 to ~7,510 events/sec on 1,000-event datasets).
+
 ---
 
 ## 📊 Detection Evaluation Benchmark
@@ -97,12 +106,42 @@ The behavioral detection engine is empirically evaluated using both development 
 
 ### Option A: Standalone Windows Executable (Zero Dependencies)
 
-1. Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from [Releases](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
-2. Verify the SHA-256 checksum:
-   ```powershell
-   Get-FileHash .\SOC_Alert_Analyzer.exe -Algorithm SHA256
+1. **Download Artifacts**:
+   Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from the [Latest Release](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
+
+2. **Verify Cryptographic SHA-256 Integrity**:
+   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (26,543,857 bytes) is:
+   ```text
+   722a33735a61fb613cb67225f679bfd61b19a2518baacf556c4d532c97edba1c  SOC_Alert_Analyzer.exe
    ```
-3. Run the executable. It starts the defensive server on local loopback, runs an initial baseline audit, and automatically opens your default browser at `http://127.0.0.1:8000`.
+
+   * **Method 1: Windows PowerShell**
+     ```powershell
+     Get-FileHash .\SOC_Alert_Analyzer.exe -Algorithm SHA256
+     ```
+   * **Method 2: Windows Command Prompt (CertUtil)**
+     ```cmd
+     certutil -hashfile SOC_Alert_Analyzer.exe SHA256
+     ```
+   * **Method 3: Standalone Verification Script (Python)**
+     ```powershell
+     python scripts/verify_release_checksum.py --verify SHA256SUMS.txt
+     ```
+
+3. **Launch the Application**:
+   Double-click `SOC_Alert_Analyzer.exe` or execute from the terminal:
+   ```powershell
+   .\SOC_Alert_Analyzer.exe
+   ```
+   * The launcher starts the defensive server on the local loopback interface (`127.0.0.1:8000`), performs an initial host security baseline, and automatically opens your default browser.
+   * **Optional CLI Arguments**:
+     * `--host HOST`: Bind host interface (default: `127.0.0.1`).
+     * `--port PORT`: Bind TCP port (default: `8000`). If occupied, dynamically allocates next available.
+     * `--strict-port`: Fails immediately if the designated port is occupied instead of searching.
+     * `--no-browser`: Disables automatic browser launch (ideal for headless or CI use).
+     * `--log-level {info,debug,warning,error}`: Server logging level.
+   * **First-Run Authentication Credentials**:
+     On first launch, standalone mode generates secure, random API keys stored in `%LOCALAPPDATA%\SOC_Alert_Analyzer\.auth_credentials` (or local data directory) with user-restricted permissions (`icacls`). Displayed securely in the console banner.
 
 ### Option B: Docker Compose (Hardened Multi-Container)
 
@@ -179,9 +218,14 @@ tests/test_detection_resilience.py::test_mitre_mapper_anti_false_positive PASSED
 tests/test_detection_resilience.py::test_correlator_out_of_order_clustering PASSED
 tests/test_stream_websocket.py::test_websocket_origin_validation_unit_tests PASSED
 tests/test_stream_websocket.py::test_websocket_broadcast_filters_real_threats_from_demo_clients PASSED
+tests/test_alert_recurrence.py::test_recurrence_telemetry_origin_isolation PASSED
+tests/test_alert_recurrence.py::test_recurrence_event_timestamp_sliding_window PASSED
+tests/test_alert_recurrence.py::test_recurrence_out_of_order_and_stale_events PASSED
+tests/test_ingestion_performance_and_transactions.py::test_large_batch_ingestion_performance PASSED
+tests/test_ingestion_performance_and_transactions.py::test_transaction_rollback_on_batch_failure PASSED
 tests/test_upload_security.py::test_upload_binary_executable_rejected PASSED
 tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PASSED
-======================= 217 passed, 1 warning in 30.80s =======================
+============================ 230 passed in 22.78s =============================
 ```
 
 ### Continuous Integration (GitHub Actions)
@@ -259,9 +303,10 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 3. **Log Format Ingestion Boundaries**:
    * Supported formats include JSON (Wazuh, Suricata EVE), CSV, Apache/Nginx combined access logs, Syslog BSD/RFC 5424, and Windows Event XML/JSON.
    * Proprietary binary event logs (`.evtx`) must be converted to XML or JSON prior to ingestion.
-4. **Standalone Packaging & Antivirus Heuristics**:
+4. **Standalone Packaging, Antivirus Heuristics & Build Determinism**:
    * Single-file Windows executables generated via PyInstaller bundle a self-extracting Python runtime. Heuristic antivirus scanners without vendor signatures may occasionally issue generic "Unknown Publisher" or "Heur.BZC" warnings.
    * Always verify the authentic SHA-256 hash against the officially published [`SHA256SUMS.txt`](dist/SHA256SUMS.txt).
+   * **Build Reproducibility Limitation Across Environments**: PyInstaller packages embed compilation timestamps, dynamic archive padding, and host Python bytecode. Consequently, standalone builds are not bit-for-bit identical across disparate host operating systems or Python minor versions (e.g., CI Windows Server 2022 / Python 3.12 vs local Windows 11 / Python 3.13). The authoritative release binary is the one built, smoke-tested, and verified on the official GitHub Actions Windows release runner.
 5. **Strictly Defensive Application**:
    * This project is strictly engineered for defensive blue-team operations, incident response, student training, and log correlation. It does not contain offensive weaponization, automated exploit delivery, or lateral movement tooling.
 

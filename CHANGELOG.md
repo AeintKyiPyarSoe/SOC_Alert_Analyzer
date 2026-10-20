@@ -9,16 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.6] - 2026-10-21
 
+### Added
+- **In-Memory Active Candidate Index**: High-speed in-memory indexing for $O(1)$ intra-batch recurrence deduplication during high-volume security log ingestion.
+- **Dedicated Standalone Verification Scripting**: Added standalone verification script (`scripts/verify_release_checksum.py`) validating digest format, binary presence, and exact hash matches.
+
 ### Changed
 - **Route Architecture & Shadowing Elimination**: Removed duplicate shadowed route handlers in `app/main.py` (`/api/v1/host/monitor/toggle`, `/api/v1/simulation/toggle`, `/api/v1/stream/toggle`, `/api/v1/stream/status`), moved `/api/v1/sample-data/load/{dataset_type}` to `app/api/routes.py`, and added route-organization assertions (`tests/test_route_organization.py`) guaranteeing zero duplicate path/method registrations across the application.
-- **Host Sensor Status & Event Loop Reliability**: Fixed `HostSecuritySensor.get_host_info()` to accurately report `stream_manager.host_monitoring_active` rather than `simulation_active`. Upgraded stream toggles to `async def` and stored application event loop references to guarantee dependable background task spawning on restart across execution contexts.
-- **Alert Recurrence Multi-Field Precision**: Refined deduplication matching in `host_sensor.py` and `routes.py` to evaluate `destination_ip` and `username`, preventing erroneous merging of distinct user accounts or network endpoints with identical generic rule descriptions.
-- **Hardened Fail-Closed Production Configuration**: Blocked insecure overrides by failing closed (`RuntimeError`) if `COOKIE_SECURE=false` or `DEMO_MODE=true` in `ENVIRONMENT=production`.
 - **Canonical Version Synchronization**: Unified package versioning across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` application metadata to strictly align with release `v1.2.6`.
-- **High-Performance Ingestion & Batched Transaction Resilience**: Replaced individual `db.flush()` calls on every event in `app/api/routes.py` with an in-memory active candidate index for $O(1)$ intra-batch recurrence deduplication and bounded chunked flushes (`DB_BATCH_SIZE = 250`). Wrapped the entire ingestion, flushing, and correlation pipeline in an atomic database transaction with automatic `db.rollback()` on failure, eliminating partial imports, dirty session states, and excessive round-trips. Delivered an **8.3x throughput speedup** (from ~904 to ~7510 events/sec on 1,000-event datasets). Expanded test suite to **230 passing tests**.
-- **Provenance-Isolated & Event-Timestamp-Anchored Alert Recurrence**: Fixed sliding-window deduplication in `app/security/host_sensor.py` and `app/api/routes.py` to filter strictly on matching `telemetry_origin`, preventing cross-origin contamination between `HOST_TELEMETRY`, `HISTORICAL_LOG`, `SIMULATED_DEMO`, and `SECURITY_DRILL`. Transitioned deduplication from wall-clock time (`datetime.now()`) to incoming event timestamps (`ev_ts ± DEDUP_WINDOW_SECONDS`), enabling robust sliding-window deduplication for historical batch uploads/replays, bounded isolation for future-dated clock anomalies, safe non-merging for stale out-of-order events, and deterministic most-recent candidate selection (`ORDER BY desc(coalesce(last_seen, timestamp))`). Expanded test suite to **224 passing tests**.
+- **Release Verification & Documentation**: Reconciled documentation, badges, changelog records, and evaluation metrics to accurately reflect **230 passing tests**, **86% (Linux) / 88% (Windows)** cross-platform test coverage, and v1.2.6 verified standalone executable status.
+
+### Fixed
+- **Provenance-Isolated Alert Recurrence**: Fixed sliding-window deduplication in `app/security/host_sensor.py` and `app/api/routes.py` to filter strictly on matching `telemetry_origin`, preventing cross-origin contamination between `HOST_TELEMETRY`, `HISTORICAL_LOG`, `SIMULATED_DEMO`, and `SECURITY_DRILL`.
+- **Event-Timestamp-Anchored Deduplication Window**: Transitioned deduplication from wall-clock time (`datetime.now()`) to incoming event timestamps (`ev_ts ± DEDUP_WINDOW_SECONDS`), enabling robust sliding-window deduplication for historical batch uploads/replays, bounded isolation for future-dated clock anomalies, safe non-merging for stale out-of-order events, and deterministic most-recent candidate selection (`ORDER BY desc(coalesce(last_seen, timestamp))`).
 - **Recurrence Edge-Case Hardening**: Resolved intra-batch burst deduplication race conditions by enforcing transactional flushes in `host_sensor.py` and `routes.py`, hardened username whitespace sanitization to `None`, guaranteed boundary preservation for legacy null-timestamp records, and enforced non-merge isolation for resolved/closed alerts.
-- **Release Verification & Documentation**: Reconciled documentation, badges, changelog records, and evaluation metrics to accurately reflect **217 passing tests**, **86% (Linux) / 88% (Windows)** cross-platform test coverage, and v1.2.6 release status.
+- **Alert Recurrence Multi-Field Precision**: Refined deduplication matching in `host_sensor.py` and `routes.py` to evaluate `destination_ip` and `username`, preventing erroneous merging of distinct user accounts or network endpoints with identical generic rule descriptions.
+- **Host Sensor Status & Event Loop Reliability**: Fixed `HostSecuritySensor.get_host_info()` to accurately report `stream_manager.host_monitoring_active` rather than `simulation_active`. Upgraded stream toggles to `async def` and stored application event loop references to guarantee dependable background task spawning on restart across execution contexts.
+
+### Performance & Internal Improvements
+- **High-Performance Ingestion & Batched Transaction Resilience**: Replaced individual `db.flush()` calls on every event in `app/api/routes.py` with an in-memory active candidate index for $O(1)$ intra-batch recurrence deduplication and bounded chunked flushes (`DB_BATCH_SIZE = 250`). Wrapped the entire ingestion, flushing, and correlation pipeline in an atomic database transaction with automatic `db.rollback()` on failure, eliminating partial imports, dirty session states, and excessive round-trips. Delivered an **8.3x throughput speedup** (from ~904 to ~7510 events/sec on 1,000-event datasets).
+- **Test Suite & CI Matrix Expansion**: Expanded automated test suite from 203 to **230 passing tests** across 6 platform/Python configurations (Ubuntu/Windows on Python 3.11, 3.12, 3.13) + Security Audit.
+- **Hardened Windows Standalone Executable Verification**: Rebuilt standalone executable `SOC_Alert_Analyzer.exe` (26,543,857 bytes) on GitHub Actions Windows release runner and verified with SHA-256 digest `722a33735a61fb613cb67225f679bfd61b19a2518baacf556c4d532c97edba1c`.
+
+### Security
+- **Hardened Fail-Closed Production Configuration**: Blocked insecure overrides by failing closed (`RuntimeError`) if `COOKIE_SECURE=false` or `DEMO_MODE=true` in `ENVIRONMENT=production`.
 
 ---
 
