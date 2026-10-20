@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Correlated Security Incidents{% endblock %}
+
+{% block content %}
+<div class="hero-section" style="padding-bottom: 0.5rem;">
+    <div class="hero-content">
+        <h1 class="hero-title">Correlated Security Incidents</h1>
+        <p class="hero-subtitle">
+            Multi-event attack campaigns automatically clustered by attacker entities, shared IP subnets, and temporal correlation windows.
+        </p>
+    </div>
+    <div class="hero-actions">
+        <a href="/upload" class="btn btn-primary btn-sm">➕ Import Telemetry</a>
+        <a href="/" class="btn btn-secondary btn-sm">← Back to Workbench</a>
+    </div>
+</div>
+
+<!-- Filter by Status -->
+<div class="queue-panel" style="margin-bottom: 1.25rem;">
+    <div class="queue-controls-header">
+        <form method="get" action="/incidents" style="display: flex; gap: 0.75rem; align-items: flex-end;">
+            <div>
+                <label for="status" style="display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">Filter by Status:</label>
+                <select id="status" name="status" class="filter-select">
+                    <option value="">All Incidents</option>
+                    <option value="OPEN" {% if current_status == 'OPEN' %}selected{% endif %}>Open</option>
+                    <option value="INVESTIGATING" {% if current_status == 'INVESTIGATING' %}selected{% endif %}>Investigating</option>
+                    <option value="RESOLVED" {% if current_status == 'RESOLVED' %}selected{% endif %}>Resolved</option>
+                    <option value="FALSE_POSITIVE" {% if current_status == 'FALSE_POSITIVE' %}selected{% endif %}>False Positive</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+            <a href="/incidents" class="btn btn-outline btn-sm">Reset</a>
+        </form>
+    </div>
+</div>
+
+<!-- Incidents List -->
+<div style="display: flex; flex-direction: column; gap: 1rem;">
+    {% if incidents %}
+        {% for inc in incidents %}
+        <div class="detail-section-card" style="padding: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.65rem;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+                        <span class="status-indicator status-{{ inc.status|lower }}">{{ inc.status }}</span>
+                        <span class="badge-sev badge-sev-{{ 'critical' if inc.risk_score >= 75 else ('high' if inc.risk_score >= 50 else ('medium' if inc.risk_score >= 25 else 'low')) }}">
+                            Risk {{ inc.risk_score }}/100
+                        </span>
+                        <span class="alert-row-source-tag">{{ inc.alert_count }} aggregated alert(s)</span>
+                    </div>
+                    <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main);">{{ inc.title }}</h2>
+                </div>
+                <a href="/incidents/{{ inc.id }}" class="btn btn-primary btn-sm">
+                    Investigate Playbook →
+                </a>
+            </div>
+
+            <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.85rem;">
+                {{ inc.description }}
+            </p>
+
+            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--text-faint); padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+                <div>
+                    <span>First Seen:</span>
+                    <span style="font-family: var(--font-mono); color: var(--text-muted);">{{ inc.first_seen.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
+                </div>
+                <div>
+                    <span>Last Seen:</span>
+                    <span style="font-family: var(--font-mono); color: var(--text-muted);">{{ inc.last_seen.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
+                </div>
+                {% if inc.mitre_technique %}
+                <div>
+                    <span>MITRE:</span>
+                    <a href="https://attack.mitre.org/techniques/{{ inc.mitre_technique }}/" target="_blank" rel="noopener noreferrer" style="color: var(--mitre-text); font-family: var(--font-mono); text-decoration: none;">
+                        {{ inc.mitre_technique }} ↗
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="queue-empty-state">
+            <p>No correlated incidents found in the database.</p>
+            <a href="/upload" class="btn btn-primary btn-sm">Import Security Logs</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

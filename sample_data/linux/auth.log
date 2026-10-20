@@ -1,0 +1,8 @@
+Sep 10 10:14:01 server1 sshd[14101]: Failed password for invalid user admin from 192.168.1.45 port 49152 ssh2
+Sep 10 10:14:04 server1 sshd[14102]: Failed password for invalid user test from 192.168.1.45 port 49153 ssh2
+Sep 10 10:14:08 server1 sshd[14103]: Failed password for invalid user oracle from 192.168.1.45 port 49154 ssh2
+Sep 10 10:14:12 server1 sshd[14104]: Failed password for root from 192.168.1.45 port 49155 ssh2
+Sep 10 10:14:15 server1 sshd[14105]: Failed password for root from 192.168.1.45 port 49156 ssh2
+Sep 10 10:14:19 server1 sshd[14106]: Failed password for root from 192.168.1.45 port 49157 ssh2
+Sep 10 10:15:30 server1 sshd[14150]: Accepted password for ubuntu from 192.168.1.100 port 49160 ssh2
+Sep 10 10:16:02 server1 sudo:   ubuntu : TTY=pts/0 ; PWD=/home/ubuntu ; USER=root ; COMMAND=/bin/bash -c "cat /etc/shadow"

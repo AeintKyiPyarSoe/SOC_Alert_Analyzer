@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Defensive Security Operations Center{% endblock %}
+
+{% block content %}
+<!-- Introduction / Hero Region -->
+<section class="hero-section">
+    <div class="hero-content">
+        <h1 class="hero-title">Less noise. More clarity.</h1>
+        <p class="hero-subtitle">
+            Defensive Security Operations Center — Real-time host security monitoring, normalized telemetry, and correlated triage playbooks.
+        </p>
+    </div>
+    <div class="hero-actions">
+        <button class="btn btn-primary btn-sm" id="btn-run-audit" onclick="runHostAudit()" title="Audit running processes, listening sockets, and Windows event logs now">
+            🛡️ Scan Host Security Now
+        </button>
+        <button class="btn btn-outline btn-sm" id="btn-run-drill" onclick="runTestDrill()" title="Trigger harmless test drill to verify real-time alerting">
+            🎯 Test Drill
+        </button>
+        <button class="btn btn-outline btn-sm" id="btn-clear-alerts" onclick="clearAllAlerts()" title="Clear alert history and re-audit host">
+            🗑️ Clear History
+        </button>
+        <button class="btn btn-outline btn-sm" id="btn-toggle-sim" onclick="toggleSimulation()" title="Pause or resume continuous background sensor">
+            ⚡ Sensor: ON
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="openPlaygroundModal()" title="Explore or import synthetic Wazuh / Suricata datasets">
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>Explore sample data</span>
+        </button>
+        <a href="/upload" class="btn btn-outline btn-sm">➕ Import Logs</a>
+    </div>
+</section>
+
+<!-- Data Notice Strip -->
+<div class="data-notice-strip" role="status">
+    <div class="data-notice-left">
+        <span class="data-notice-icon">
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </span>
+        <span id="data-notice-text">Host EDR: Monitoring local machine processes, sockets & telemetry in real time</span>
+    </div>
+    <span class="data-notice-status-tag" id="data-notice-tag">Live Sensor</span>
+</div>
+
+<!-- 6.1 Severity Overview Cards -->
+<section class="severity-overview-section" aria-label="Severity Overview">
+    <div class="severity-overview-header">
+        <span>Urgency Overview (click a card to filter the queue):</span>
+        <button type="button" class="scoring-help-link" onclick="openHelpModal()">
+            <span>How is urgency scored?</span>
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        </button>
+    </div>
+
+    <div class="severity-cards-grid">
+        <!-- Critical -->
+        <div class="severity-card severity-card-critical" id="card-critical" onclick="toggleSeverityFilter('CRITICAL')" role="button" tabindex="0" aria-pressed="false">
+            <div class="severity-card-top">
+                <div class="severity-label-group">
+                    <span class="severity-dot-indicator"></span>
+                    <span>Critical</span>
+                </div>
+                <span class="severity-score-range">75–100</span>
+            </div>
+            <div class="severity-count" id="count-critical">{{ stats.critical_count }}</div>
+            <div class="severity-guidance">Investigate first</div>
+            <div class="severity-share-track">
+                <div class="severity-share-fill" id="share-bar-critical" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- High -->
+        <div class="severity-card severity-card-high" id="card-high" onclick="toggleSeverityFilter('HIGH')" role="button" tabindex="0" aria-pressed="false">
+            <div class="severity-card-top">
+                <div class="severity-label-group">
+                    <span class="severity-dot-indicator"></span>
+                    <span>High</span>
+                </div>
+                <span class="severity-score-range">50–74</span>
+            </div>
+            <div class="severity-count" id="count-high">{{ stats.high_count }}</div>
+            <div class="severity-guidance">Review promptly</div>
+            <div class="severity-share-track">
+                <div class="severity-share-fill" id="share-bar-high" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- Medium -->
+        <div class="severity-card severity-card-medium" id="card-medium" onclick="toggleSeverityFilter('MEDIUM')" role="button" tabindex="0" aria-pressed="false">
+            <div class="severity-card-top">
+                <div class="severity-label-group">
+                    <span class="severity-dot-indicator"></span>
+                    <span>Medium</span>
+                </div>
+                <span class="severity-score-range">25–49</span>
+            </div>
+            <div class="severity-count" id="count-medium">{{ stats.medium_count }}</div>
+            <div class="severity-guidance">Check the context</div>
+            <div class="severity-share-track">
+                <div class="severity-share-fill" id="share-bar-medium" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- Low -->
+        <div class="severity-card severity-card-low" id="card-low" onclick="toggleSeverityFilter('LOW')" role="button" tabindex="0" aria-pressed="false">
+            <div class="severity-card-top">
+                <div class="severity-label-group">
+                    <span class="severity-dot-indicator"></span>
+                    <span>Low</span>
+                </div>
+                <span class="severity-score-range">0–24</span>
+            </div>
+            <div class="severity-count" id="count-low">{{ stats.low_count }}</div>
+            <div class="severity-guidance">Usually routine</div>
+            <div class="severity-share-track">
+                <div class="severity-share-fill" id="share-bar-low" style="width: 0%;"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Investigation Workspace (Desktop Two Columns ~1.28:1) -->
+<section class="investigation-workspace" id="alert-queue-section">
+    <!-- Left Column: Alert Queue -->
+    <div class="queue-panel">
+        <div class="queue-controls-header">
+            <!-- Review status filter pills with dataset-wide counts -->
+            <div class="status-filter-pills" role="radiogroup" aria-label="Review status filter">
+                <button type="button" class="status-pill-btn active" data-status="all">
+                    <span>All alerts</span>
+                    <span class="status-pill-count" id="status-count-all">{{ stats.total_alerts }}</span>
+                </button>
+                <button type="button" class="status-pill-btn" data-status="needs_review">
+                    <span>Needs review</span>
+                    <span class="status-pill-count" id="status-count-needs">{{ stats.open_count + stats.investigating_count }}</span>
+                </button>
+                <button type="button" class="status-pill-btn" data-status="reviewed">
+                    <span>Reviewed</span>
+                    <span class="status-pill-count" id="status-count-reviewed">{{ stats.resolved_count }}</span>
+                </button>
+            </div>
+
+            <!-- Search, Source & Sort Row -->
+            <div class="queue-filter-row">
+                <div class="search-input-wrapper">
+                    <svg class="search-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="search-input" class="search-input" placeholder="Search title, IP, device, technique..." aria-label="Search alerts">
+                    <span class="search-kbd-shortcut" title="Press '/' to search">/</span>
+                </div>
+
+                <select id="source-select" class="filter-select" aria-label="Filter by source tool">
+                    <option value="all">All sources</option>
+                    <option value="host">Host EDR</option>
+                    <option value="windows">Windows Event</option>
+                    <option value="wazuh">Wazuh</option>
+                    <option value="suricata">Suricata</option>
+                    <option value="firewall">Firewall</option>
+                    <option value="linux">Linux Auth</option>
+                </select>
+
+                <select id="sort-select" class="filter-select" aria-label="Sort alerts">
+                    <option value="priority">Highest priority</option>
+                    <option value="newest">Newest first</option>
+                </select>
+            </div>
+
+            <!-- Result Count & Clear Action -->
+            <div class="queue-results-bar">
+                <span id="queue-results-count" class="queue-count-text">Showing <strong>{{ alerts|length }}</strong> matching alerts</span>
+                <button type="button" class="btn-clear-filters" onclick="clearAllFilters()">Clear filters</button>
+            </div>
+        </div>
+
+        <!-- Scrollable Queue List Container -->
+        <div class="queue-list-container" id="queue-list" role="feed" aria-label="Security Alert Queue">
+            <!-- Dynamically populated by app.js from real host telemetry -->
+        </div>
+    </div>
+
+    <!-- Right Column: Selected Alert Details -->
+    <div class="details-panel" id="details-panel" aria-live="polite">
+        <!-- Dynamically populated by app.js -->
+    </div>
+</section>
+
+<!-- Host Telemetry Strip (Protected Host Baseline EDR) -->
+{% if host_info %}
+<aside class="host-telemetry-strip" aria-label="Protected Machine Baseline Status">
+    <div class="host-telemetry-items">
+        <div class="host-item-block">
+            <span class="host-item-icon">💻</span>
+            <div>
+                <div class="host-item-label">Protected Host</div>
+                <div class="host-item-val" id="host-val-name">{{ host_info.hostname }}</div>
+            </div>
+        </div>
+        <div class="host-item-block">
+            <span class="host-item-icon">🪟</span>
+            <div>
+                <div class="host-item-label">Operating System</div>
+                <div class="host-item-val">{{ host_info.os }} ({{ host_info.architecture }})</div>
+            </div>
+        </div>
+        <div class="host-item-block">
+            <span class="host-item-icon">⚙️</span>
+            <div>
+                <div class="host-item-label">Running Processes</div>
+                <div class="host-item-val" id="host-process-count">{{ host_info.process_count }} active</div>
+            </div>
+        </div>
+        <div class="host-item-block">
+            <span class="host-item-icon">🌐</span>
+            <div>
+                <div class="host-item-label">Local IP</div>
+                <div class="host-item-val">{{ host_info.local_ips[0] if host_info.local_ips else '127.0.0.1' }}</div>
+            </div>
+        </div>
+    </div>
+    <div style="font-size: 0.75rem; color: var(--accent-mint); font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+        <span>🛡️</span>
+        <span id="host-edr-mode-label">Native Host EDR Active</span>
+    </div>
+</aside>
+{% endif %}
+
+<!-- Real Host Alerts Data Injected from Server Database -->
+<script id="initial-real-alerts" type="application/json">
+{{ serialized_alerts | tojson }}
+</script>
+{% endblock %}

@@ -1,0 +1,79 @@
+[
+  {
+    "timestamp": "2026-09-10T10:01:05.120+0000",
+    "rule": {
+      "level": 10,
+      "description": "sshd: Multiple failed SSH login attempts from same source",
+      "id": "5710",
+      "firedtimes": 37,
+      "groups": ["syslog", "sshd", "authentication_failed", "authentication_failures"]
+    },
+    "agent": {
+      "id": "001",
+      "name": "ubuntu-server",
+      "ip": "192.168.1.10"
+    },
+    "data": {
+      "srcip": "192.168.1.45",
+      "dstuser": "root",
+      "srcport": 54321
+    },
+    "full_log": "Sep 10 10:01:05 ubuntu-server sshd[28491]: Failed password for root from 192.168.1.45 port 54321 ssh2"
+  },
+  {
+    "timestamp": "2026-09-10T10:02:15.450+0000",
+    "rule": {
+      "level": 10,
+      "description": "sshd: Failed authentication attempt",
+      "id": "5716",
+      "firedtimes": 2,
+      "groups": ["syslog", "sshd", "authentication_failed"]
+    },
+    "agent": {
+      "id": "001",
+      "name": "ubuntu-server",
+      "ip": "192.168.1.10"
+    },
+    "data": {
+      "srcip": "192.168.1.45",
+      "dstuser": "admin",
+      "srcport": 54322
+    },
+    "full_log": "Sep 10 10:02:15 ubuntu-server sshd[28492]: Failed password for invalid user admin from 192.168.1.45 port 54322 ssh2"
+  },
+  {
+    "timestamp": "2026-09-10T10:03:00.800+0000",
+    "rule": {
+      "level": 7,
+      "description": "Integrity checksum changed for /etc/shadow",
+      "id": "550",
+      "firedtimes": 1,
+      "groups": ["syscheck", "integrity_change"]
+    },
+    "agent": {
+      "id": "001",
+      "name": "ubuntu-server",
+      "ip": "192.168.1.10"
+    },
+    "data": {
+      "file": "/etc/shadow"
+    },
+    "full_log": "File '/etc/shadow' checksum changed. Old md5 was: a1b2... new md5 is: c3d4..."
+  },
+  {
+    "timestamp": "2026-09-10T10:04:12.110+0000",
+    "rule": {
+      "level": 12,
+      "description": "Rootcheck: Hidden process or suspicious kernel rootkit detected",
+      "id": "510",
+      "firedtimes": 1,
+      "groups": ["rootcheck"]
+    },
+    "agent": {
+      "id": "001",
+      "name": "ubuntu-server",
+      "ip": "192.168.1.10"
+    },
+    "full_log": "Rootcheck anomaly detected: process ID 3144 hidden from /proc filesystem"
+  }
+]
