@@ -107,12 +107,15 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
         # Correlate
         new_incidents = IncidentCorrelator.correlate_alerts(db)
 
-        # SQL-level aggregation
-        total_alerts = db.query(func.count(Alert.id)).scalar() or 0
-        total_incidents = db.query(func.count(Incident.id)).scalar() or 0
+        # SQL-level aggregation strictly isolated to demonstration telemetry
+        demo_q = db.query(Alert).filter(Alert.telemetry_origin == "SIMULATED_DEMO")
+        total_alerts = demo_q.with_entities(func.count(Alert.id)).scalar() or 0
+        total_incidents = db.query(func.count(Incident.id)).filter(
+            ~Incident.alerts.any(Alert.telemetry_origin != "SIMULATED_DEMO")
+        ).scalar() or 0
 
-        sev_counts = dict(db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all())
-        status_counts = dict(db.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all())
+        sev_counts = dict(demo_q.with_entities(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all())
+        status_counts = dict(demo_q.with_entities(Alert.status, func.count(Alert.id)).group_by(Alert.status).all())
 
         stats = {
             "total_alerts": total_alerts,

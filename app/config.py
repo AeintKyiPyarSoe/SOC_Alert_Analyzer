@@ -46,6 +46,7 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
         except Exception:
             pass
 
+    data_dir.mkdir(parents=True, exist_ok=True)
     # Generate new random keys
     generated = {
         "admin_key": f"admin_{secrets.token_urlsafe(24)}",
@@ -67,9 +68,11 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
             try:
                 import subprocess
                 user = os.environ.get("USERNAME")
-                if user:
+                domain = os.environ.get("USERDOMAIN")
+                principal = f"{domain}\\{user}" if domain and user else user
+                if principal:
                     subprocess.run(
-                        ["icacls", str(creds_file), "/inheritance:r", "/grant:r", f"{user}:(R,W)"],
+                        ["icacls", str(creds_file), "/inheritance:r", "/grant:r", f"{principal}:(F)"],
                         capture_output=True,
                         check=False
                     )
@@ -83,7 +86,7 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.3"
+    VERSION: str = "1.2.4"
     API_V1_STR: str = "/api/v1"
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
@@ -167,9 +170,14 @@ class Settings:
         self.UPLOAD_DIR: Path = self.DATA_DIR / "uploads"
         self.ALLOWED_EXTENSIONS: set = {".json", ".log", ".txt", ".eve", ".xml", ".csv"}
 
-        # Correlation Engine Configuration
+        # Correlation & Deduplication Engine Configuration
         self.CORRELATION_WINDOW_SECONDS: int = int(os.getenv("CORRELATION_WINDOW_SECONDS", "300"))
+        self.DEDUP_WINDOW_SECONDS: int = int(os.getenv("DEDUP_WINDOW_SECONDS", "300"))
         self.MAX_ALERTS_PER_INCIDENT: int = int(os.getenv("MAX_ALERTS_PER_INCIDENT", "1000"))
+
+        # Real Host Monitoring & Demonstration Simulation Controls
+        self.HOST_MONITORING_ENABLED: bool = os.getenv("HOST_MONITORING_ENABLED", "true").lower() in ("true", "1", "yes")
+        self.SIMULATION_ENABLED: bool = os.getenv("SIMULATION_ENABLED", "false").lower() in ("true", "1", "yes")
 
         # CORS Settings: strictly configured allowed origins.
         _allowed_origins_env = os.getenv("ALLOWED_ORIGINS")

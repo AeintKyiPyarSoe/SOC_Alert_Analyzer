@@ -25,6 +25,7 @@ from app.security.mitre_mapper import MitreMapper
 from app.security.auth import get_current_user, require_role, validate_token, Role, User
 from app.security.session import session_manager
 from app.security.upload_security import SecureUploadHandler
+from app.security.stream import stream_manager
 
 router = APIRouter()
 
@@ -466,14 +467,30 @@ def update_incident_status(
 # -------------------------------------------------------------
 
 @router.get("/dashboard/stats", response_model=DashboardStats)
-def get_dashboard_stats(db: Session = Depends(get_db)):
-    """Calculate aggregated metrics using high-performance SQL group-by queries, isolating simulated demo events."""
-    base_q = db.query(Alert)
-    if not settings.DEMO_MODE:
-        base_q = base_q.filter(Alert.telemetry_origin != "SIMULATED_DEMO")
+def get_dashboard_stats(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Calculate aggregated metrics using high-performance SQL group-by queries.
+    Enforces user-aware authorization: anonymous/demo clients only receive statistics
+    derived from SIMULATED_DEMO telemetry, preventing exposure of private operational metrics.
+    """
+    if user.username in ("anonymous", "demo_viewer"):
+        base_q = db.query(Alert).filter(Alert.telemetry_origin == "SIMULATED_DEMO")
+        incidents_q = db.query(Incident).filter(~Incident.alerts.any(Alert.telemetry_origin != "SIMULATED_DEMO"))
+        total_incidents = incidents_q.with_entities(func.count(Incident.id)).scalar() or 0
+    else:
+        base_q = db.query(Alert)
+        if not settings.DEMO_MODE:
+            base_q = base_q.filter(Alert.telemetry_origin != "SIMULATED_DEMO")
+            total_incidents = db.query(func.count(Incident.id)).filter(
+                Incident.alerts.any(Alert.telemetry_origin != "SIMULATED_DEMO")
+            ).scalar() or 0
+        else:
+            total_incidents = db.query(func.count(Incident.id)).scalar() or 0
 
     total_alerts = base_q.with_entities(func.count(Alert.id)).scalar() or 0
-    total_incidents = db.query(func.count(Incident.id)).scalar() or 0
 
     sev_rows = base_q.with_entities(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all()
     sev_map = {row[0]: row[1] for row in sev_rows}
@@ -493,6 +510,55 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         false_positive_count=status_map.get("FALSE_POSITIVE", 0),
         total_incidents=total_incidents
     )
+
+# -------------------------------------------------------------
+# REST API: Telemetry & Simulation Controls
+# -------------------------------------------------------------
+
+@router.post("/host/monitor/toggle")
+def toggle_host_monitor(
+    active: bool = Query(...),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Enable or pause genuine host security monitoring. Requires ANALYST or ADMIN role."""
+    stream_manager.host_monitoring_active = active
+    return {
+        "status": "success",
+        "host_monitoring_active": stream_manager.host_monitoring_active
+    }
+
+@router.post("/simulation/toggle")
+def toggle_simulation(
+    active: bool = Query(...),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Enable or pause synthetic demonstration threat simulation. Requires ANALYST or ADMIN role."""
+    stream_manager.simulation_active = active
+    return {
+        "status": "success",
+        "simulation_active": stream_manager.simulation_active
+    }
+
+@router.post("/stream/toggle")
+def toggle_stream_backward_compat(
+    active: bool = Query(...),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Backward-compatible toggle controlling synthetic threat simulation. Requires ANALYST or ADMIN role."""
+    stream_manager.simulation_active = active
+    return {
+        "status": "success",
+        "simulation_active": stream_manager.simulation_active
+    }
+
+@router.get("/stream/status")
+def get_stream_status():
+    """Check whether real-time host monitoring and simulation are actively running."""
+    return {
+        "host_monitoring_active": stream_manager.host_monitoring_active,
+        "simulation_active": stream_manager.simulation_active,
+        "connected_clients": len(stream_manager.active_connections)
+    }
 
 # -------------------------------------------------------------
 # REST API: Real-World Host Sensor & Telemetry

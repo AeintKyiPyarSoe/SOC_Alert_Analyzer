@@ -28,6 +28,7 @@ from app.security.normalizer import AlertNormalizer
 from app.security.correlator import IncidentCorrelator
 from app.security.stream import stream_manager
 from app.security.host_sensor import host_sensor, real_host_monitor_loop
+from app.security.simulator import live_threat_simulator_loop
 from app.security.auth import require_role, Role, User, authenticate_websocket, get_current_user
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -51,10 +52,13 @@ async def lifespan(app: FastAPI):
     # Startup: initialize database tables & audit local host baseline
     init_db()
     initial_host_baseline()
-    # Start continuous real host security monitor
+    # Start continuous real host security monitor and synthetic demo simulator
     monitor_task = asyncio.create_task(real_host_monitor_loop())
+    simulator_task = asyncio.create_task(live_threat_simulator_loop())
     yield
     monitor_task.cancel()
+    simulator_task.cancel()
+    await asyncio.gather(monitor_task, simulator_task, return_exceptions=True)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -124,12 +128,36 @@ async def websocket_threats_endpoint(websocket: WebSocket):
     except Exception:
         await stream_manager.disconnect(websocket)
 
+@app.post("/api/v1/host/monitor/toggle")
+def toggle_host_monitor(
+    active: bool = Query(...),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Enable or pause genuine real-time host security monitoring. Requires ANALYST or ADMIN role."""
+    stream_manager.host_monitoring_active = active
+    return {
+        "status": "success",
+        "host_monitoring_active": stream_manager.host_monitoring_active
+    }
+
+@app.post("/api/v1/simulation/toggle")
+def toggle_simulation(
+    active: bool = Query(...),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Enable or pause synthetic demonstration threat simulation. Requires ANALYST or ADMIN role."""
+    stream_manager.simulation_active = active
+    return {
+        "status": "success",
+        "simulation_active": stream_manager.simulation_active
+    }
+
 @app.post("/api/v1/stream/toggle")
 def toggle_stream(
     active: bool = Query(...),
     user: User = Depends(require_role(Role.ANALYST))
 ):
-    """Enable or pause the real-time background threat simulator. Requires ANALYST or ADMIN role."""
+    """Backward-compatible toggle controlling synthetic threat simulation. Requires ANALYST or ADMIN role."""
     stream_manager.simulation_active = active
     return {
         "status": "success",
@@ -138,8 +166,9 @@ def toggle_stream(
 
 @app.get("/api/v1/stream/status")
 def get_stream_status():
-    """Check whether real-time simulation is actively broadcasting."""
+    """Check whether real-time host monitoring and simulation are actively running."""
     return {
+        "host_monitoring_active": stream_manager.host_monitoring_active,
         "simulation_active": stream_manager.simulation_active,
         "connected_clients": len(stream_manager.active_connections)
     }
