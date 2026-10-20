@@ -605,6 +605,7 @@ def get_stream_status():
 @router.get("/host/status")
 def get_host_sensor_status(user: User = Depends(get_current_user)):
     """Retrieve live hardware, OS, network, and security posture of the current machine."""
+    from app.security.stream import stream_manager
     if user.username in ("anonymous", "demo_viewer"):
         return {
             "hostname": "demo-soc-sensor-01",
@@ -616,6 +617,7 @@ def get_host_sensor_status(user: User = Depends(get_current_user)):
             "interfaces": ["eth0 (demo)"],
             "listening_ports": [80, 443],
             "sanitized": True,
+            "monitoring_active": stream_manager.host_monitoring_active,
             "auth_required_notice": "Authentication required for live genuine host telemetry."
         }
     from app.security.host_sensor import host_sensor
