@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Set
 import psutil
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database.connection import SessionLocal
 from app.models.alert import Alert
 from app.models.incident import Incident
@@ -86,13 +87,33 @@ class HostSecuritySensor:
     def __init__(self):
         self.os_type = platform.system()  # 'Windows', 'Linux', 'Darwin'
         self.hostname = platform.node()
-        self.seen_signatures: Set[str] = set()
+        self.seen_signatures: Dict[str, datetime] = {}
         self.last_log_poll_time = datetime.now(timezone.utc) - timedelta(minutes=10)
         try:
             self.known_pids: Set[int] = set(psutil.pids())
         except Exception:
             self.known_pids = set()
         self.known_startup_files: Set[str] = self._get_startup_files()
+
+    def _is_signature_seen_recent(self, sig: str, max_age_seconds: Optional[int] = None) -> bool:
+        """
+        Check if signature was seen within recent sliding window, automatically
+        pruning stale entries to prevent unbounded memory growth and handle recurrences.
+        """
+        now = datetime.now(timezone.utc)
+        window = max_age_seconds if max_age_seconds is not None else getattr(settings, "DEDUP_WINDOW_SECONDS", 300)
+
+        # Periodic pruning if signature cache grows
+        if len(self.seen_signatures) > 3000:
+            cutoff = now - timedelta(seconds=window)
+            self.seen_signatures = {k: v for k, v in self.seen_signatures.items() if v >= cutoff}
+
+        last_seen = self.seen_signatures.get(sig)
+        if last_seen and (now - last_seen).total_seconds() < window:
+            return True
+
+        self.seen_signatures[sig] = now
+        return False
 
     def _get_startup_files(self) -> Set[str]:
         """Returns set of file paths currently in Windows Startup folders."""
@@ -126,8 +147,7 @@ class HostSecuritySensor:
 
         for f in new_files:
             sig = f"startup_{f}"
-            if sig not in self.seen_signatures:
-                self.seen_signatures.add(sig)
+            if not self._is_signature_seen_recent(sig):
                 fname = os.path.basename(f)
                 events.append({
                     "source_type": "Host_Security_Sensor",
@@ -147,6 +167,11 @@ class HostSecuritySensor:
         events = []
         try:
             pid = p.pid
+            create_time = 0
+            try:
+                create_time = int(p.create_time())
+            except Exception:
+                pass
             name = (p.name() or '').lower()
             exe = self.normalize_path(p.exe() or '')
             cmdline_list = p.cmdline() or []
@@ -168,9 +193,8 @@ class HostSecuritySensor:
 
             # 1. Behavioral: Malicious Parent-Child Chains
             if parent_name in self.WEB_PARENTS and name in self.SCRIPT_CHILDREN:
-                sig = f"webshell_{parent_name}_{name}_{pid}"
-                if sig not in self.seen_signatures:
-                    self.seen_signatures.add(sig)
+                sig = f"webshell_{parent_name}_{name}_{pid}_{create_time}"
+                if not self._is_signature_seen_recent(sig):
                     events.append({
                         "source_type": "Host_Process_Sensor",
                         "telemetry_origin": "HOST_TELEMETRY",
@@ -185,9 +209,8 @@ class HostSecuritySensor:
                     })
 
             if parent_name in self.OFFICE_PARENTS and name in self.SCRIPT_CHILDREN:
-                sig = f"maldoc_{parent_name}_{name}_{pid}"
-                if sig not in self.seen_signatures:
-                    self.seen_signatures.add(sig)
+                sig = f"maldoc_{parent_name}_{name}_{pid}_{create_time}"
+                if not self._is_signature_seen_recent(sig):
                     events.append({
                         "source_type": "Host_Process_Sensor",
                         "telemetry_origin": "HOST_TELEMETRY",
@@ -203,9 +226,8 @@ class HostSecuritySensor:
 
             # 2. Exact match on known offensive security tools
             if name in self.OFFENSIVE_BINARIES:
-                sig = f"tool_{name}_{pid}"
-                if sig not in self.seen_signatures:
-                    self.seen_signatures.add(sig)
+                sig = f"tool_{name}_{pid}_{create_time}"
+                if not self._is_signature_seen_recent(sig):
                     events.append({
                         "source_type": "Host_Process_Sensor",
                         "telemetry_origin": "HOST_TELEMETRY",
@@ -232,9 +254,8 @@ class HostSecuritySensor:
                     lolbin_weight += 3
 
                 if lolbin_weight >= 3:
-                    sig = f"ps_behavioral_{pid}"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    sig = f"ps_behavioral_{pid}_{create_time}"
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Process_Sensor",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -252,9 +273,8 @@ class HostSecuritySensor:
             cleaned_cmd = cmdline.replace(".exe", "")
             for kw in self.RANSOMWARE_DEFENSE_EVASION:
                 if kw in cleaned_cmd:
-                    sig = f"ransom_cmd_{kw}_{pid}"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    sig = f"ransom_cmd_{kw}_{pid}_{create_time}"
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Process_Sensor",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -271,9 +291,8 @@ class HostSecuritySensor:
             # 5. Process Masquerading check
             if name in self.SYSTEM32_NAMES:
                 if exe and "system32" not in exe and "syswow64" not in exe:
-                    sig = f"masq_{name}_{pid}"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    sig = f"masq_{name}_{pid}_{create_time}"
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Process_Sensor",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -290,9 +309,8 @@ class HostSecuritySensor:
             # 6. Executables running out of temporary writable directories
             if exe and any(tmp in exe for tmp in ["\\temp\\", "/tmp/", "\\appdata\\local\\temp", "/dev/shm"]):  # nosec B108
                 if not any(ign in name for ign in ["update", "installer", "setup", "edge", "chrome", "code"]):
-                    sig = f"tmp_exe_{pid}"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    sig = f"tmp_exe_{pid}_{create_time}"
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Process_Sensor",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -309,9 +327,8 @@ class HostSecuritySensor:
             # 7. Behavioral: Memory / Credential Dumping Commands (T1003)
             for cred_pattern in self.CREDENTIAL_DUMPING_PATTERNS:
                 if cred_pattern in cleaned_cmd or cred_pattern in cmdline or ("procdump" in name and "-ma" in cmdline):
-                    sig = f"cred_dump_{cred_pattern}_{pid}"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    sig = f"cred_dump_{cred_pattern}_{pid}_{create_time}"
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Process_Sensor",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -327,9 +344,8 @@ class HostSecuritySensor:
 
             # 8. LOLBins: Ingress Tool Transfer via certutil (T1105)
             if "certutil" in name and ("-urlcache" in cmdline or "-split" in cmdline):
-                sig = f"certutil_download_{pid}"
-                if sig not in self.seen_signatures:
-                    self.seen_signatures.add(sig)
+                sig = f"certutil_download_{pid}_{create_time}"
+                if not self._is_signature_seen_recent(sig):
                     events.append({
                         "source_type": "Host_Process_Sensor",
                         "telemetry_origin": "HOST_TELEMETRY",
@@ -345,9 +361,8 @@ class HostSecuritySensor:
 
             # 9. Defense Evasion: Impair Defenses via netsh firewall disable (T1562.001)
             if "netsh" in name and "advfirewall" in cmdline and "state off" in cmdline:
-                sig = f"netsh_fw_off_{pid}"
-                if sig not in self.seen_signatures:
-                    self.seen_signatures.add(sig)
+                sig = f"netsh_fw_off_{pid}_{create_time}"
+                if not self._is_signature_seen_recent(sig):
                     events.append({
                         "source_type": "Host_Process_Sensor",
                         "telemetry_origin": "HOST_TELEMETRY",
@@ -461,8 +476,7 @@ class HostSecuritySensor:
                             continue
 
                         sig = f"listen_{port}_{conn.pid}"
-                        if sig not in self.seen_signatures:
-                            self.seen_signatures.add(sig)
+                        if not self._is_signature_seen_recent(sig):
 
                             events.append({
                                 "source_type": "Host_Network_Sensor",
@@ -487,8 +501,7 @@ class HostSecuritySensor:
                     if IPClassifier.is_public_ip(r_ip):
                         if r_port in (4444, 1337, 6667, 9001, 8888):
                             sig = f"outbound_{r_ip}_{r_port}_{conn.pid}"
-                            if sig not in self.seen_signatures:
-                                self.seen_signatures.add(sig)
+                            if not self._is_signature_seen_recent(sig):
                                 proc_name = "Unknown"
                                 if conn.pid:
                                     try:
@@ -529,8 +542,7 @@ class HostSecuritySensor:
                 output = res.stdout or ""
                 if "State                                 OFF" in output:
                     sig = "win_firewall_off"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Security_Posture",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -550,8 +562,7 @@ class HostSecuritySensor:
                 res = subprocess.run(["ufw", "status"], capture_output=True, text=True, timeout=3)
                 if "inactive" in (res.stdout or "").lower():
                     sig = "linux_ufw_inactive"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    if not self._is_signature_seen_recent(sig):
                         events.append({
                             "source_type": "Host_Security_Posture",
                             "telemetry_origin": "HOST_TELEMETRY",
@@ -593,8 +604,7 @@ class HostSecuritySensor:
                 parsed = parser.parse(out)
                 for ev in parsed:
                     sig = f"winevent_{ev.get('event_id')}_{ev.get('timestamp')}"
-                    if sig not in self.seen_signatures:
-                        self.seen_signatures.add(sig)
+                    if not self._is_signature_seen_recent(sig):
                         ev["telemetry_origin"] = "HOST_TELEMETRY"
                         events.append(ev)
         except Exception as e:
@@ -607,11 +617,14 @@ class HostSecuritySensor:
         created_alerts = []
         for raw in raw_events:
             normalized = AlertNormalizer.normalize(raw)
-            # Deduplicate: if an identical OPEN alert already exists within recent window, do not duplicate
+            # Deduplicate: if an identical OPEN alert already exists within the sliding time window, do not duplicate
+            dedup_window = getattr(settings, "DEDUP_WINDOW_SECONDS", 300)
+            window_start = datetime.now(timezone.utc) - timedelta(seconds=dedup_window)
             existing = db.query(Alert).filter(
                 Alert.event_type == normalized["event_type"],
                 Alert.description == normalized["description"],
-                Alert.status == "OPEN"
+                Alert.status == "OPEN",
+                Alert.timestamp >= window_start
             ).first()
             if existing:
                 continue
@@ -756,7 +769,7 @@ async def real_host_monitor_loop():
 
     while True:
         try:
-            if stream_manager.simulation_active:
+            if stream_manager.host_monitoring_active:
                 db = SessionLocal()
                 try:
                     if not initial_full_done or (tick % 10 == 0):
@@ -826,8 +839,12 @@ async def real_host_monitor_loop():
                     # Periodic telemetry heartbeat every 5 ticks (~10s)
                     elif tick % 5 == 0 and stream_manager.active_connections:
                         host_info = host_sensor.get_host_info()
+                        host_info["monitoring_active"] = stream_manager.host_monitoring_active
+                        host_info["simulation_active"] = stream_manager.simulation_active
                         await stream_manager.broadcast({
                             "type": "HEARTBEAT",
+                            "origin": "HOST_TELEMETRY",
+                            "is_sensitive": True,
                             "host_info": host_info
                         })
                 finally:

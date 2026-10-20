@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.4] - 2026-10-20
+
+### Added
+- **Dashboard Stats Security & Telemetry Isolation**: Enforced user-aware role authorization on `GET /api/v1/dashboard/stats`. Anonymous visitors strictly receive statistics aggregated from `SIMULATED_DEMO` telemetry, while authenticated roles (`ADMIN`, `ANALYST`, `VIEWER`) obtain genuine operational metrics (`tests/test_api_stats_security.py`).
+- **WebSocket Heartbeat Sensitive Telemetry Classification**: Host heartbeats (`HEARTBEAT`) are classified as sensitive telemetry. Unauthenticated demo viewers receive sanitized demonstration heartbeats (`demo-soc-sensor-01`), withholding real hostnames, IPs, and platform details. Authenticated analysts receive raw operational telemetry (`tests/test_stream_heartbeat_security.py`).
+- **Time-Bounded Alert Deduplication & PID Reuse Resolution**: Replaced unbounded set storage in `HostSecuritySensor` with a timestamped sliding window (`DEDUP_WINDOW_SECONDS = 300`). Process signatures incorporate process creation times (`create_time`) to prevent false-suppression of distinct processes upon OS PID reuse. Added automatic pruning when signature cache exceeds bounds (`tests/test_dedup_time_window.py`).
+- **Decoupled Host Monitoring & Threat Simulation**: Strictly segregated real-time host intrusion auditing (`host_monitoring_active`) from synthetic demonstration threat generation (`simulation_active`). Added independent granular toggle routes (`POST /api/v1/host/monitor/toggle`, `POST /api/v1/simulation/toggle`, `GET /api/v1/stream/status`). Demo threat generation isolates SQL aggregation strictly to synthetic alerts (`tests/test_simulator_separation.py`).
+- **Hardened Docker & Environment Propagation**: Propagated `ENVIRONMENT`, `COOKIE_SECURE`, `ALLOW_INSECURE_AUTH_DISABLED`, `ALLOWED_ORIGINS`, and `DEDUP_WINDOW_SECONDS` to `docker-compose.yml`, accompanied by container health checks via `/api/v1/stream/status`.
+- **Deep Coverage Expansion**: Boosted automated test suite to **179 passing tests (100%)** and **88% codebase coverage**, verifying deep edge cases across all log parsers (`firewall.py` 100%, `wazuh.py` 98%, `web_access.py` 96%, `suricata.py` 95%, `windows_event.py` 90%), `mitre_mapper.py` (99%), `risk_engine.py` (97%), and API route lifecycle transitions.
+
+### Changed
+- **Windows Local Credential Access Control**: Configured `icacls` invocation in local standalone credential generation to properly format `USERDOMAIN\USERNAME` principal and grant full control permissions (`(F)`), ensuring persistent portability and reliable loading across Windows environments.
+- **Standalone Windows Executable**: Rebuilt standalone executable `dist/SOC_Alert_Analyzer.exe` with updated version `1.2.4` and verified runtime HTTP API smoke tests on Windows.
+
+---
+
 ## [1.2.3] - 2026-10-20
 
 ### Added
