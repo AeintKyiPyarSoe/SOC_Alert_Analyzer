@@ -2,10 +2,13 @@ name: CI/CD Pipeline - Test, Quality & Security Audit
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "improvement/**" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -31,10 +34,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest-cov
 
-      - name: Run Pytest Suite
+      - name: Run Pytest Suite with Coverage
         run: |
-          python -m pytest -v --tb=short
+          python -m pytest -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Run Empirical Detection Evaluation Benchmark
+        run: |
+          python scripts/evaluate_detection.py
 
   security-and-lint:
     name: Code Quality & Dependency Vulnerability Audit
@@ -53,12 +61,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 pip-audit bandit
+          pip install flake8 ruff pip-audit bandit
 
       - name: Python Syntax and Fatal Error Linting (flake8)
         run: |
-          # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: High-Performance Static Code Analysis (ruff)
+        run: |
+          ruff check --select=E9,F63,F7,F82 app/ tests/ launcher.py scripts/
 
       - name: Dependency Security Audit (pip-audit)
         run: |
@@ -67,4 +78,3 @@ jobs:
       - name: Static AST Application Security Analysis (bandit)
         run: |
           bandit -r app/ -ll -ii -x app/static
-

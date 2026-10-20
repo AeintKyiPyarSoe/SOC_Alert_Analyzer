@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 from typing import List, Dict, Any
@@ -62,13 +63,13 @@ class SuricataParser(BaseParser):
         signature_id = alert.get("signature_id")
         suricata_severity = alert.get("severity")  # In Suricata: 1=High, 2=Med, 3=Low, 4=Info
 
-        # Map signature to event_type
+        # Map signature to event_type using word-boundary matching
         sig_lower = signature.lower()
         if "scan" in sig_lower or "sweep" in sig_lower:
             event_type = "network_scan"
         elif "brute" in sig_lower or "failed" in sig_lower or "login" in sig_lower:
             event_type = "ssh_authentication_failure"
-        elif "dos" in sig_lower or "flood" in sig_lower:
+        elif bool(re.search(r"\bdos\b", sig_lower)) or "denial of service" in sig_lower or "flood" in sig_lower:
             event_type = "denial_of_service"
         elif "exploit" in sig_lower or "cve" in sig_lower:
             event_type = "exploit_attempt"

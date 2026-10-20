@@ -1,8 +1,9 @@
+import math
 from typing import Dict, Any, Tuple, Optional
 
 class RiskEngine:
     """
-    Explainable, rule-based cybersecurity risk calculation engine.
+    Explainable, deterministic rule-based cybersecurity risk calculation engine.
     Standardizes threat assessment on a 0-100 scale across 4 severity tiers:
       - 0 to 24:   LOW
       - 25 to 49:  MEDIUM
@@ -69,8 +70,8 @@ class RiskEngine:
     @classmethod
     def calculate_risk(
         cls,
-        event_type: str,
-        source_type: str,
+        event_type: Optional[str],
+        source_type: Optional[str] = None,
         raw_level: Any = None,
         frequency_count: int = 1,
         is_external_ip: bool = True,
@@ -81,12 +82,15 @@ class RiskEngine:
     ) -> Tuple[int, str, Dict[str, Any]]:
         """
         Computes risk score, severity band, and transparent contributing factors.
+        Safely handles missing, malformed, or out-of-bounds parameters.
         """
-        # 1. Base Score
-        base = cls.BASE_SEVERITY_MAP.get(event_type.lower(), 30)
+        # 1. Base Score with safe handling of missing / unexpected event types
+        clean_event = str(event_type or "").strip().lower()
+        base = cls.BASE_SEVERITY_MAP.get(clean_event, 30)
 
         # Incorporate tool-specific severity hints if available
-        if source_type == "Wazuh" and raw_level is not None:
+        src_lower = str(source_type or "").strip().lower()
+        if src_lower == "wazuh" and raw_level is not None:
             try:
                 level = int(raw_level)
                 # Wazuh levels: 0-15+
@@ -98,7 +102,7 @@ class RiskEngine:
                     base = max(base, 35)
             except (ValueError, TypeError):
                 pass
-        elif source_type == "Suricata" and raw_level is not None:
+        elif src_lower == "suricata" and raw_level is not None:
             try:
                 suricata_sev = int(raw_level)
                 # Suricata: 1=High, 2=Med, 3=Low, 4=Info
@@ -112,35 +116,46 @@ class RiskEngine:
                 pass
 
         # 2. Frequency Modifier (burst / repeated activity)
+        try:
+            freq = max(1, int(frequency_count or 1))
+        except (ValueError, TypeError):
+            freq = 1
+
         frequency_mod = 0
-        if frequency_count >= 30:
+        if freq >= 30:
             frequency_mod = 30
-        elif frequency_count >= 10:
+        elif freq >= 10:
             frequency_mod = 20
-        elif frequency_count >= 5:
+        elif freq >= 5:
             frequency_mod = 10
-        elif frequency_count > 1:
+        elif freq > 1:
             frequency_mod = 5
 
-        # 3. Attack Confidence Modifier
+        # 3. Attack Confidence Modifier (safely handle NaN, inf, out-of-bounds)
         if detection_confidence is not None:
-            confidence = max(0.0, min(1.0, float(detection_confidence)))
-            confidence_mod = int(round(confidence * 10))
+            try:
+                conf_val = float(detection_confidence)
+                if math.isnan(conf_val) or math.isinf(conf_val):
+                    confidence_mod = 0
+                else:
+                    clamped_conf = max(0.0, min(1.0, conf_val))
+                    confidence_mod = int(round(clamped_conf * 10))
+            except (ValueError, TypeError):
+                confidence_mod = 0
         else:
             confidence_mod = 10 if is_known_attack_signature else 0
-            confidence = 1.0 if is_known_attack_signature else 0.8
 
         # 4. External IP Exposure Modifier
-        asset_mod = 5 if is_external_ip else 0
+        asset_mod = 5 if bool(is_external_ip) else 0
 
         # 5. User Account Privilege Modifier
-        privilege_mod = 10 if is_privileged_user else 0
+        privilege_mod = 10 if bool(is_privileged_user) else 0
 
         # 6. False-Positive Dampener
-        # Dampen score for known internal maintenance / benign context
-        dampener_mod = 20 if is_benign_internal_context else 0
+        # Dampen score for verified internal maintenance / benign administrative context
+        dampener_mod = 20 if bool(is_benign_internal_context) else 0
 
-        # Calculate final clamped score
+        # Calculate final clamped score [0, 100]
         raw_total = base + frequency_mod + confidence_mod + asset_mod + privilege_mod - dampener_mod
         total_score = min(100, max(0, raw_total))
         severity = cls.get_severity_level(total_score)

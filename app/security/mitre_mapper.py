@@ -1,7 +1,43 @@
+import re
 from typing import Optional, Dict, Any
 
 # Canonical MITRE ATT&CK Enterprise mappings
 MITRE_TECHNIQUES: Dict[str, Dict[str, str]] = {
+    "T1003": {
+        "id": "T1003",
+        "name": "OS Credential Dumping",
+        "tactic": "Credential Access",
+        "description": "Adversaries may attempt to dump credentials to obtain account login and credential material.",
+        "url": "https://attack.mitre.org/techniques/T1003/"
+    },
+    "T1105": {
+        "id": "T1105",
+        "name": "Ingress Tool Transfer",
+        "tactic": "Command and Control",
+        "description": "Adversaries may transfer tools or other files from an external system into a compromised environment.",
+        "url": "https://attack.mitre.org/techniques/T1105/"
+    },
+    "T1204.002": {
+        "id": "T1204.002",
+        "name": "User Execution: Malicious File",
+        "tactic": "Execution",
+        "description": "An adversary may rely upon a user opening a malicious file or attachment to achieve execution.",
+        "url": "https://attack.mitre.org/techniques/T1204/002/"
+    },
+    "T1490": {
+        "id": "T1490",
+        "name": "Inhibit System Recovery",
+        "tactic": "Impact",
+        "description": "Adversaries may delete or remove built-in operating system recovery mechanisms, such as Volume Shadow Copies.",
+        "url": "https://attack.mitre.org/techniques/T1490/"
+    },
+    "T1036.005": {
+        "id": "T1036.005",
+        "name": "Masquerading: Match Legitimate Name or Location",
+        "tactic": "Defense Evasion",
+        "description": "Adversaries may match or approximate legitimate binary names or directory paths to evade defenses.",
+        "url": "https://attack.mitre.org/techniques/T1036/005/"
+    },
     "T1110": {
         "id": "T1110",
         "name": "Brute Force",
@@ -166,19 +202,23 @@ MITRE_TECHNIQUES: Dict[str, Dict[str, str]] = {
 }
 
 class MitreMapper:
-    """Maps security events to MITRE ATT&CK techniques."""
+    """
+    Defensible mapping of security telemetry events to MITRE ATT&CK techniques.
+    Avoids attributing techniques based on weak, ambiguous keyword substrings.
+    Represents uncertain or non-attack events with None.
+    """
 
     @staticmethod
-    def map_event(event_type: str, description: str = "") -> Optional[str]:
-        event = event_type.lower()
-        desc = description.lower()
+    def map_event(event_type: Optional[str], description: str = "") -> Optional[str]:
+        event = str(event_type or "").strip().lower()
+        desc = str(description or "").strip().lower()
 
         # Brute force / Auth failure
         if "ssh_authentication_failure" in event or "ssh_invalid_user" in event or "windows_failed_logon" in event:
             return "T1110"
-        if "brute" in desc or "failed login" in desc or "failed password" in desc or "failed logon" in desc:
+        if bool(re.search(r"\bbrute\b", desc)) or "failed login" in desc or "failed password" in desc or "failed logon" in desc:
             return "T1110"
-        if "password guessing" in desc:
+        if "password guessing" in desc or "password spray" in desc:
             return "T1110.001"
 
         # SSH activity / lateral movement
@@ -196,7 +236,7 @@ class MitreMapper:
             return "T1136.001"
 
         # Persistence: Services & Tasks & Startup
-        if "persistence_startup_created" in event or "startup" in desc:
+        if "persistence_startup_created" in event or "startup folder" in desc or "autostart" in desc:
             return "T1547.001"
         if "windows_service_installed" in event or "service installed" in desc:
             return "T1543.003"
@@ -204,21 +244,23 @@ class MitreMapper:
             return "T1053.005"
 
         # Defense Evasion: Log cleared & Firewall disabled & Masquerading
-        if "windows_log_cleared" in event or "log cleared" in desc or "audit log" in desc:
+        if "windows_log_cleared" in event or "log cleared" in desc or "audit log cleared" in desc:
             return "T1070.001"
-        if "host_firewall_disabled" in event or "firewall is disabled" in desc:
+        if "host_firewall_disabled" in event or "firewall is disabled" in desc or "firewall disabled" in desc:
             return "T1562.001"
         if "masqueraded_process" in event or "masquerad" in desc:
             return "T1036"
 
-        # Network discovery / Scan / Open ports
+        # Network discovery / Scan / Open ports (requires explicit scan context, avoiding generic substring 'scan')
         if "network_scan" in event or "port_scan" in event or "insecure_listening_port" in event:
             return "T1046"
-        if "scan" in desc or "sweep" in desc or "listening port" in desc:
+        if ("port scan" in desc or "network scan" in desc or "ip sweep" in desc or
+                "port sweep" in desc or "listening port" in desc or
+                bool(re.search(r"\b(syn|fin|xmas|ack)\s+scan\b", desc))):
             return "T1046"
 
         # Command & Control / Suspicious outbound
-        if "suspicious_outbound_connection" in event or "outbound connection" in desc:
+        if "suspicious_outbound_connection" in event or "suspicious outbound" in desc:
             return "T1071"
 
         # Script execution / PowerShell
@@ -230,7 +272,7 @@ class MitreMapper:
         # Web Attacks
         if "web_sql_injection" in event or "sql injection" in desc:
             return "T1190"
-        if "web_path_traversal" in event or "directory traversal" in desc or "lfi" in desc:
+        if "web_path_traversal" in event or "directory traversal" in desc or "path traversal" in desc or "lfi" in desc:
             return "T1190"
         if "web_xss_attempt" in event or "cross-site scripting" in desc:
             return "T1190"
@@ -240,27 +282,25 @@ class MitreMapper:
             return "T1595"
 
         # Resource Hijacking / Mining
-        if "cryptominer_detected" in event or "miner" in desc or "cryptomining" in desc:
+        if "cryptominer_detected" in event or "cryptomining" in desc or bool(re.search(r"\b(cryptominer|monero|stratum)\b", desc)):
             return "T1496"
 
-        # SSH activity / lateral movement
-        if "ssh_activity" in event:
-            return "T1021.004"
-
         # Privilege escalation / sudo
-        if "sudo" in event or "rootcheck" in event or "privilege" in desc:
+        if "sudo_command_execution" in event or "sudo" in event or "rootcheck" in event:
+            return "T1548"
+        if "privilege escalation" in desc or "elevation of privilege" in desc or "uac bypass" in desc:
             return "T1548"
 
         # File integrity / Syscheck
         if "file_integrity" in event or "syscheck" in desc:
             return "T1565"
 
-        # DoS / Flooding
-        if "denial_of_service" in event or "dos" in desc or "flood" in desc:
+        # DoS / Flooding (word boundary matching to prevent false positives on 'paradox', 'shadows', 'msdos')
+        if "denial_of_service" in event or bool(re.search(r"\bdos\b", desc)) or "denial of service" in desc or "flood" in desc:
             return "T1498"
 
-        # Exploits
-        if "exploit" in event or "exploit" in desc:
+        # Exploits (requires clear exploit or CVE context)
+        if "exploit" in event or "exploit attempt" in desc or "exploited" in desc or bool(re.search(r"\bcve-\d{4}-\d+\b", desc)):
             return "T1190"
 
         # Firewall blocked traffic

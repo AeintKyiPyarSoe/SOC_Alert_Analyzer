@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 class ThreatStreamManager:
     """
     Manages WebSocket connections and broadcasts real-time threat telemetry
-    with distinct origin tags (HOST_TELEMETRY, SIMULATED_DEMO, SECURITY_DRILL, IMPORTED_LOG).
-    Enforces authorization separation so unauthenticated/demo viewers never receive
+    with distinct origin tags (HOST_TELEMETRY, SIMULATED_DEMO, SECURITY_DRILL, HISTORICAL_LOG).
+    Enforces authorization separation so unauthenticated, guest, or viewer clients never receive
     sensitive genuine host telemetry.
     """
 
@@ -31,8 +31,8 @@ class ThreatStreamManager:
 
     async def broadcast(self, message: Dict[str, Any]):
         """
-        Broadcast message safely, filtering sensitive genuine host telemetry
-        from unauthenticated or demo-only clients.
+        Broadcast message safely, strictly filtering sensitive genuine host telemetry
+        from unauthenticated, demo-only, or viewer clients.
         """
         dead_connections = []
         async with self._lock:
@@ -43,10 +43,16 @@ class ThreatStreamManager:
         is_sensitive = (msg_origin == "HOST_TELEMETRY" or msg_type == "REAL_THREAT")
 
         for connection, user in current_connections:
-            # If sensitive genuine host telemetry, withhold from anonymous or demo_viewer
-            if is_sensitive and user is not None:
+            # If sensitive genuine host telemetry, withhold unless authenticated as ADMIN or ANALYST
+            if is_sensitive:
+                if user is None:
+                    continue
                 username = getattr(user, "username", "")
                 if username in ("anonymous", "demo_viewer"):
+                    continue
+                role = getattr(user, "role", None)
+                role_val = getattr(role, "value", str(role or "")).upper()
+                if role_val not in ("ADMIN", "ANALYST"):
                     continue
 
             try:
