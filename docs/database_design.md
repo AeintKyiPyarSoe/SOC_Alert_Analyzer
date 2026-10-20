@@ -105,6 +105,7 @@ Stores canonical, normalized security events.
 | `id` | `UUID` | No | `gen_random_uuid()` | Primary Key | Globally unique alert identifier. |
 | `timestamp` | `TIMESTAMPTZ` | No | — | `NOT NULL` | The exact time the event occurred in UTC. |
 | `source_type` | `VARCHAR(32)` | No | — | `NOT NULL` | Log source (`WAZUH`, `SURICATA`, `LINUX_AUTH`). |
+| `telemetry_origin` | `VARCHAR(32)` | No | `'HISTORICAL_LOG'` | Indexed | Origin stream classification (`HOST_TELEMETRY`, `HISTORICAL_LOG`, `SIMULATED_DEMO`, `SECURITY_DRILL`). Strictly segregated during recurrence deduplication. |
 | `event_type` | `VARCHAR(64)` | No | — | `NOT NULL` | Normalized classification (e.g., `ssh_auth_fail`). |
 | `description` | `TEXT` | No | — | `NOT NULL` | Plain-language description of the alert. |
 | `source_ip` | `INET` | Yes | `NULL` | Valid IP format | IP address of the attacking or source host. |
@@ -347,3 +348,14 @@ class Incident(Base):
    ```
 2. **Referential Cascading**: When an incident is deleted or unbundled, only the associations in `incident_alerts` are removed; individual normalized alerts are preserved in `alerts` to maintain an immutable audit trail.
 3. **Database Seeding**: An automated seed script (`sample_data/seed.py`) populates representative incidents (brute force, port scan, suspicious script execution) to enable instantaneous testing and UI evaluation upon container launch.
+
+### 7.1 Alert Recurrence & Provenance Isolation Semantics
+
+Alert recurrence tracking in `app/security/host_sensor.py` and `app/api/routes.py` enforces sliding-window deduplication with strict provenance isolation and time-bounded safety guarantees:
+
+1. **Event-Timestamp Anchored Window**: Recurrence evaluates candidate alerts relative to incoming event timestamps (`ev_ts`) rather than host wall-clock time (`datetime.now()`). The bidirectional evaluation window is defined as `[ev_ts - DEDUP_WINDOW_SECONDS, ev_ts + DEDUP_WINDOW_SECONDS]` (default 300 seconds), ensuring historical log files, forensic replays, and batch imports deduplicate sequentially within their native timeframes.
+2. **Strict Telemetry Origin Isolation**: Deduplication queries filter on `Alert.telemetry_origin == origin`. Real live telemetry (`HOST_TELEMETRY`), uploaded historical logs (`HISTORICAL_LOG`), synthetic demonstration threats (`SIMULATED_DEMO`), and security drills (`SECURITY_DRILL`) never merge across boundary types. Legacy null origin records safely default to `HISTORICAL_LOG`.
+3. **Out-of-Order & Stale Event Safety**: Out-of-order events arriving within the sliding window safely expand chronological boundaries (`first_seen = min(first_seen, ev_ts)`, `last_seen = max(last_seen, ev_ts)`). Out-of-order events arriving outside the window (`ev_ts < first_seen - dedup_window`) are bounded by `Alert.first_seen <= window_end` and spawn independent alerts rather than distorting current records.
+4. **Future-Dated Event Isolation**: Future-dated events with clock skews or forward timestamps cannot absorb present-day events because the present-day evaluation window is bounded by `first_seen <= window_end`. Future events deduplicate strictly within their own matching forward timeframes.
+5. **Deterministic Most-Recent Candidate Selection**: In cases where multiple matching candidate alerts exist, the query deterministically selects the most recent occurrence via `ORDER BY desc(coalesce(Alert.last_seen, Alert.timestamp))`.
+6. **High-Performance Ingestion & Batched Transaction Safety**: The ingestion pipeline in `app/api/routes.py` utilizes an in-memory active candidate index to resolve intra-batch duplicates in $O(1)$ time without repetitive database round-trips. Database writes are grouped into bounded chunks (`DB_BATCH_SIZE = 250`) protecting connection pools and memory limits. Ingestion and correlation execute within a single atomic database transaction with automatic `db.rollback()` on error to guarantee zero partial imports or inconsistent database state.

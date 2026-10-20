@@ -1,5 +1,6 @@
 import uuid
 import threading
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
@@ -28,6 +29,8 @@ from app.security.upload_security import SecureUploadHandler
 from app.security.stream import stream_manager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
 
 class SecurityAuditTrail:
     """Thread-safe security audit trail for administrative operations."""
@@ -241,74 +244,151 @@ async def upload_log_file(
 
     # Normalize and persist alerts using bounded memory batches with recurrence tracking
     total_ingested = 0
-    batch = []
+    batch_chunk: List[Alert] = []
+    batch_size = getattr(settings, "DB_BATCH_SIZE", 250)
     dedup_window = getattr(settings, "DEDUP_WINDOW_SECONDS", 300)
-    for raw_ev in raw_events:
-        raw_ev.setdefault("telemetry_origin", "HISTORICAL_LOG")
-        normalized = AlertNormalizer.normalize(raw_ev)
-        ev_ts = normalized["timestamp"]
-        if ev_ts.tzinfo is None:
-            ev_ts = ev_ts.replace(tzinfo=timezone.utc)
 
-        window_start = datetime.now(timezone.utc) - timedelta(seconds=dedup_window)
-        existing = db.query(Alert).filter(
-            Alert.event_type == normalized["event_type"],
-            Alert.description == normalized["description"],
-            Alert.source_type == normalized["source_type"],
-            Alert.source_ip == normalized.get("source_ip"),
-            Alert.destination_ip == normalized.get("destination_ip"),
-            Alert.username == normalized.get("username"),
-            Alert.status == "OPEN",
-            or_(
-                Alert.last_seen >= window_start,
-                and_(Alert.last_seen.is_(None), Alert.timestamp >= window_start)
-            )
-        ).first()
+    # In-memory index of active candidate alerts for intra-batch recurrence deduplication:
+    # Key: (origin, event_type, description, source_type, source_ip, destination_ip, username)
+    # Value: List[Alert]
+    active_candidates: dict = {}
 
-        if existing:
-            existing.occurrence_count = (existing.occurrence_count or 1) + 1
-            curr_first = existing.first_seen or existing.timestamp
-            if curr_first.tzinfo is None:
-                curr_first = curr_first.replace(tzinfo=timezone.utc)
-            curr_last = existing.last_seen or existing.timestamp
-            if curr_last.tzinfo is None:
-                curr_last = curr_last.replace(tzinfo=timezone.utc)
-            existing.first_seen = min(curr_first, ev_ts)
-            existing.last_seen = max(curr_last, ev_ts)
-            db.flush()
-            total_ingested += 1
-            continue
-
-        alert = Alert(
-            id=uuid.uuid4(),
-            timestamp=normalized["timestamp"],
-            is_valid_timestamp=normalized["is_valid_timestamp"],
-            source_type=normalized["source_type"],
-            telemetry_origin=normalized["telemetry_origin"],
-            event_type=normalized["event_type"],
-            description=normalized["description"],
-            source_ip=normalized["source_ip"],
-            destination_ip=normalized["destination_ip"],
-            source_port=normalized["source_port"],
-            destination_port=normalized["destination_port"],
-            username=normalized["username"],
-            severity=normalized["severity"],
-            risk_score=normalized["risk_score"],
-            mitre_technique=normalized["mitre_technique"],
-            status="OPEN",
-            raw_log=normalized.get("raw_log"),
-            occurrence_count=1,
-            first_seen=normalized["timestamp"],
-            last_seen=normalized["timestamp"]
+    def _get_candidate_key(norm: dict, orig: str) -> tuple:
+        return (
+            orig,
+            norm["event_type"],
+            norm["description"],
+            norm["source_type"],
+            norm.get("source_ip"),
+            norm.get("destination_ip"),
+            norm.get("username"),
         )
-        db.add(alert)
-        db.flush()
-        total_ingested += 1
 
-    db.commit()
+    try:
+        for raw_ev in raw_events:
+            raw_ev.setdefault("telemetry_origin", "HISTORICAL_LOG")
+            normalized = AlertNormalizer.normalize(raw_ev)
+            ev_ts = normalized["timestamp"]
+            if ev_ts.tzinfo is None:
+                ev_ts = ev_ts.replace(tzinfo=timezone.utc)
+            origin = normalized.get("telemetry_origin") or "HISTORICAL_LOG"
 
-    # Trigger Incident Correlation
-    incidents = IncidentCorrelator.correlate_alerts(db)
+            window_start = ev_ts - timedelta(seconds=dedup_window)
+            window_end = ev_ts + timedelta(seconds=dedup_window)
+            cand_key = _get_candidate_key(normalized, origin)
+
+            existing: Optional[Alert] = None
+
+            # 1. Intra-batch fast lookup: Check in-memory active candidates from this ingestion run
+            if cand_key in active_candidates:
+                for cand in reversed(active_candidates[cand_key]):
+                    c_first = cand.first_seen or cand.timestamp
+                    if c_first.tzinfo is None:
+                        c_first = c_first.replace(tzinfo=timezone.utc)
+                    c_last = cand.last_seen or cand.timestamp
+                    if c_last.tzinfo is None:
+                        c_last = c_last.replace(tzinfo=timezone.utc)
+                    if c_last >= window_start and c_first <= window_end:
+                        existing = cand
+                        break
+
+            # 2. Database query fallback: If not matched in-memory, query database for pre-existing alerts
+            if existing is None:
+                origin_filter = (
+                    or_(Alert.telemetry_origin == origin, Alert.telemetry_origin.is_(None))
+                    if origin == "HISTORICAL_LOG"
+                    else (Alert.telemetry_origin == origin)
+                )
+                existing = db.query(Alert).filter(
+                    origin_filter,
+                    Alert.event_type == normalized["event_type"],
+                    Alert.description == normalized["description"],
+                    Alert.source_type == normalized["source_type"],
+                    Alert.source_ip == normalized.get("source_ip"),
+                    Alert.destination_ip == normalized.get("destination_ip"),
+                    Alert.username == normalized.get("username"),
+                    Alert.status == "OPEN",
+                    or_(
+                        Alert.last_seen >= window_start,
+                        and_(Alert.last_seen.is_(None), Alert.timestamp >= window_start)
+                    ),
+                    or_(
+                        Alert.first_seen <= window_end,
+                        and_(Alert.first_seen.is_(None), Alert.timestamp <= window_end)
+                    )
+                ).order_by(
+                    desc(func.coalesce(Alert.last_seen, Alert.timestamp))
+                ).first()
+
+                if existing is not None:
+                    active_candidates.setdefault(cand_key, []).append(existing)
+
+            if existing is not None:
+                existing.occurrence_count = (existing.occurrence_count or 1) + 1
+                curr_first = existing.first_seen or existing.timestamp or ev_ts
+                if curr_first.tzinfo is None:
+                    curr_first = curr_first.replace(tzinfo=timezone.utc)
+                curr_last = existing.last_seen or existing.timestamp or ev_ts
+                if curr_last.tzinfo is None:
+                    curr_last = curr_last.replace(tzinfo=timezone.utc)
+                existing.first_seen = min(curr_first, ev_ts)
+                existing.last_seen = max(curr_last, ev_ts)
+                total_ingested += 1
+                continue
+
+            alert = Alert(
+                id=uuid.uuid4(),
+                timestamp=normalized["timestamp"],
+                is_valid_timestamp=normalized["is_valid_timestamp"],
+                source_type=normalized["source_type"],
+                telemetry_origin=normalized["telemetry_origin"],
+                event_type=normalized["event_type"],
+                description=normalized["description"],
+                source_ip=normalized["source_ip"],
+                destination_ip=normalized["destination_ip"],
+                source_port=normalized["source_port"],
+                destination_port=normalized["destination_port"],
+                username=normalized["username"],
+                severity=normalized["severity"],
+                risk_score=normalized["risk_score"],
+                mitre_technique=normalized["mitre_technique"],
+                status="OPEN",
+                raw_log=normalized.get("raw_log"),
+                occurrence_count=1,
+                first_seen=normalized["timestamp"],
+                last_seen=normalized["timestamp"]
+            )
+            db.add(alert)
+            batch_chunk.append(alert)
+            active_candidates.setdefault(cand_key, []).append(alert)
+            total_ingested += 1
+
+            # Periodically flush in bounded batches to balance memory and I/O
+            if len(batch_chunk) >= batch_size:
+                db.flush()
+                batch_chunk.clear()
+
+        # Final flush for any remaining batched alerts before correlation
+        if batch_chunk:
+            db.flush()
+            batch_chunk.clear()
+
+        # Trigger Incident Correlation within the protected transaction
+        incidents = IncidentCorrelator.correlate_alerts(db)
+
+        # Commit entire atomic transaction (alerts + incidents)
+        db.commit()
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error during alert ingestion from '{safe_filename}': {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database transaction failure during alert ingestion: {str(exc)}"
+        )
 
     return {
         "status": "success",

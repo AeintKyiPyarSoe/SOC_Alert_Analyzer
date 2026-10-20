@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Set
 
 import psutil
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, desc, func
 
 from app.config import settings
 from app.database.connection import SessionLocal
@@ -624,8 +624,16 @@ class HostSecuritySensor:
 
             # Deduplicate: if an identical OPEN alert already exists within the sliding time window, update recurrence tracking
             dedup_window = getattr(settings, "DEDUP_WINDOW_SECONDS", 300)
-            window_start = datetime.now(timezone.utc) - timedelta(seconds=dedup_window)
+            window_start = ev_ts - timedelta(seconds=dedup_window)
+            window_end = ev_ts + timedelta(seconds=dedup_window)
+            origin = normalized.get("telemetry_origin") or "HOST_TELEMETRY"
+            origin_filter = (
+                or_(Alert.telemetry_origin == origin, Alert.telemetry_origin.is_(None))
+                if origin == "HISTORICAL_LOG"
+                else (Alert.telemetry_origin == origin)
+            )
             existing = db.query(Alert).filter(
+                origin_filter,
                 Alert.event_type == normalized["event_type"],
                 Alert.description == normalized["description"],
                 Alert.source_type == normalized["source_type"],
@@ -636,14 +644,20 @@ class HostSecuritySensor:
                 or_(
                     Alert.last_seen >= window_start,
                     and_(Alert.last_seen.is_(None), Alert.timestamp >= window_start)
+                ),
+                or_(
+                    Alert.first_seen <= window_end,
+                    and_(Alert.first_seen.is_(None), Alert.timestamp <= window_end)
                 )
+            ).order_by(
+                desc(func.coalesce(Alert.last_seen, Alert.timestamp))
             ).first()
             if existing:
                 existing.occurrence_count = (existing.occurrence_count or 1) + 1
-                curr_first = existing.first_seen or existing.timestamp
+                curr_first = existing.first_seen or existing.timestamp or ev_ts
                 if curr_first.tzinfo is None:
                     curr_first = curr_first.replace(tzinfo=timezone.utc)
-                curr_last = existing.last_seen or existing.timestamp
+                curr_last = existing.last_seen or existing.timestamp or ev_ts
                 if curr_last.tzinfo is None:
                     curr_last = curr_last.replace(tzinfo=timezone.utc)
                 existing.first_seen = min(curr_first, ev_ts)

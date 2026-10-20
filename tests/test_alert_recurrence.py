@@ -528,3 +528,392 @@ def test_whitespace_and_empty_username_normalized_to_none(db_session: Session):
     assert len(c2) == 0  # Merged!
     db_session.refresh(c1[0])
     assert c1[0].occurrence_count == 2
+
+def test_distinct_telemetry_origin_never_merged(db_session: Session):
+    """Verify that alerts with different telemetry_origin values are strictly isolated and never merged."""
+    sensor = HostSecuritySensor()
+    t = datetime.now(timezone.utc) - timedelta(seconds=10)
+    origins = ["HOST_TELEMETRY", "SIMULATED_DEMO", "SECURITY_DRILL", "HISTORICAL_LOG"]
+
+    created = []
+    for orig in origins:
+        raw = [{
+            "timestamp": t.isoformat(),
+            "source_type": "Host_Process_Sensor",
+            "event_type": "cross_origin_isolation_test",
+            "description": "Suspicious process execution across origins",
+            "source_ip": "10.0.0.77",
+            "destination_ip": "10.0.0.1",
+            "username": "admin",
+            "severity": "HIGH",
+            "telemetry_origin": orig
+        }]
+        c = sensor._ingest_events(raw, db_session)
+        assert len(c) == 1
+        created.append(c[0])
+
+    assert len(created) == 4
+    # All alerts must have unique IDs and occurrence_count=1
+    ids = {a.id for a in created}
+    assert len(ids) == 4
+    for a, orig in zip(created, origins):
+        db_session.refresh(a)
+        assert a.telemetry_origin == orig
+        assert a.occurrence_count == 1
+
+
+def test_same_telemetry_origin_within_window_merges(db_session: Session):
+    """Verify that multiple events sharing identical telemetry_origin properly merge within recurrence window."""
+    sensor = HostSecuritySensor()
+    t0 = datetime.now(timezone.utc) - timedelta(seconds=30)
+    t1 = t0 + timedelta(seconds=10)
+
+    for orig in ["SECURITY_DRILL", "SIMULATED_DEMO", "HISTORICAL_LOG", "HOST_TELEMETRY"]:
+        raw1 = [{
+            "timestamp": t0.isoformat(),
+            "source_type": "Host_Process_Sensor",
+            "event_type": f"same_origin_test_{orig.lower()}",
+            "description": f"Testing same origin merge for {orig}",
+            "source_ip": "10.0.0.88",
+            "severity": "HIGH",
+            "telemetry_origin": orig
+        }]
+        c1 = sensor._ingest_events(raw1, db_session)
+        assert len(c1) == 1
+        alert = c1[0]
+
+        raw2 = [{
+            "timestamp": t1.isoformat(),
+            "source_type": "Host_Process_Sensor",
+            "event_type": f"same_origin_test_{orig.lower()}",
+            "description": f"Testing same origin merge for {orig}",
+            "source_ip": "10.0.0.88",
+            "severity": "HIGH",
+            "telemetry_origin": orig
+        }]
+        c2 = sensor._ingest_events(raw2, db_session)
+        assert len(c2) == 0  # Deduplicated into existing alert
+        db_session.refresh(alert)
+        assert alert.occurrence_count == 2
+        assert alert.telemetry_origin == orig
+
+
+def test_historical_events_deduplicate_relative_to_event_timestamp(db_session: Session):
+    """Verify that historical events deduplicate relative to event timestamps rather than wall-clock time."""
+    sensor = HostSecuritySensor()
+    # 14 days in the past (far beyond wall-clock 300s window)
+    t0 = datetime(2026, 10, 1, 10, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=90)   # +90s, within 300s dedup window
+    t2 = t0 + timedelta(seconds=180)  # +180s, within sliding window
+    t_outside = t0 + timedelta(seconds=700)  # +700s, outside window
+
+    raw1 = [{
+        "timestamp": t0.isoformat(),
+        "source_type": "Linux_Auth",
+        "event_type": "historical_auth_brute_force",
+        "description": "Repeated historical auth failures",
+        "source_ip": "192.168.1.200",
+        "username": "root",
+        "severity": "HIGH",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    c1 = sensor._ingest_events(raw1, db_session)
+    assert len(c1) == 1
+    alert = c1[0]
+    assert alert.occurrence_count == 1
+    assert alert.first_seen.replace(tzinfo=timezone.utc) == t0
+    assert alert.last_seen.replace(tzinfo=timezone.utc) == t0
+
+    # Second historical event within sliding window
+    raw2 = [{
+        "timestamp": t1.isoformat(),
+        "source_type": "Linux_Auth",
+        "event_type": "historical_auth_brute_force",
+        "description": "Repeated historical auth failures",
+        "source_ip": "192.168.1.200",
+        "username": "root",
+        "severity": "HIGH",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    c2 = sensor._ingest_events(raw2, db_session)
+    assert len(c2) == 0  # Merged!
+    db_session.refresh(alert)
+    assert alert.occurrence_count == 2
+    assert alert.first_seen.replace(tzinfo=timezone.utc) == t0
+    assert alert.last_seen.replace(tzinfo=timezone.utc) == t1
+
+    # Third historical event within sliding window
+    raw3 = [{
+        "timestamp": t2.isoformat(),
+        "source_type": "Linux_Auth",
+        "event_type": "historical_auth_brute_force",
+        "description": "Repeated historical auth failures",
+        "source_ip": "192.168.1.200",
+        "username": "root",
+        "severity": "HIGH",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    c3 = sensor._ingest_events(raw3, db_session)
+    assert len(c3) == 0  # Merged!
+    db_session.refresh(alert)
+    assert alert.occurrence_count == 3
+    assert alert.first_seen.replace(tzinfo=timezone.utc) == t0
+    assert alert.last_seen.replace(tzinfo=timezone.utc) == t2
+
+    # Fourth event outside window creates a new distinct alert
+    raw_out = [{
+        "timestamp": t_outside.isoformat(),
+        "source_type": "Linux_Auth",
+        "event_type": "historical_auth_brute_force",
+        "description": "Repeated historical auth failures",
+        "source_ip": "192.168.1.200",
+        "username": "root",
+        "severity": "HIGH",
+        "telemetry_origin": "HISTORICAL_LOG"
+    }]
+    c_out = sensor._ingest_events(raw_out, db_session)
+    assert len(c_out) == 1
+    new_alert = c_out[0]
+    assert new_alert.id != alert.id
+    assert new_alert.occurrence_count == 1
+    assert new_alert.first_seen.replace(tzinfo=timezone.utc) == t_outside
+
+
+def test_future_dated_events_isolated_from_present_and_each_other(db_session: Session):
+    """Verify that future-dated events do not swallow present events and deduplicate only within their own window."""
+    sensor = HostSecuritySensor()
+    t_now = datetime.now(timezone.utc)
+    t_future = t_now + timedelta(days=2)  # 2 days in the future
+    t_future_dup = t_future + timedelta(seconds=60)  # +60s from future event
+    t_future_far = t_future + timedelta(hours=2)  # 2 hours later in the future
+
+    # 1. Ingest future-dated event
+    raw_future1 = [{
+        "timestamp": t_future.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "future_time_anomaly",
+        "description": "Adversary future clock manipulation",
+        "source_ip": "10.0.0.9",
+        "severity": "CRITICAL",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c_future1 = sensor._ingest_events(raw_future1, db_session)
+    assert len(c_future1) == 1
+    future_alert = c_future1[0]
+    assert future_alert.occurrence_count == 1
+
+    # 2. Ingest present-day event with identical signature
+    # Under buggy wall-clock logic, future_alert.last_seen >= (now - 300s) would be True and swallow it!
+    # Under event-timestamp window, future_alert.first_seen <= (now + 300s) is False, so it cannot merge!
+    raw_present = [{
+        "timestamp": t_now.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "future_time_anomaly",
+        "description": "Adversary future clock manipulation",
+        "source_ip": "10.0.0.9",
+        "severity": "CRITICAL",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c_present = sensor._ingest_events(raw_present, db_session)
+    assert len(c_present) == 1  # MUST NOT be swallowed by future alert
+    present_alert = c_present[0]
+    assert present_alert.id != future_alert.id
+    assert present_alert.occurrence_count == 1
+
+    # 3. Ingest second future event within sliding window of future alert
+    raw_future2 = [{
+        "timestamp": t_future_dup.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "future_time_anomaly",
+        "description": "Adversary future clock manipulation",
+        "source_ip": "10.0.0.9",
+        "severity": "CRITICAL",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c_future2 = sensor._ingest_events(raw_future2, db_session)
+    assert len(c_future2) == 0  # Successfully merged with future alert
+    db_session.refresh(future_alert)
+    assert future_alert.occurrence_count == 2
+    assert future_alert.last_seen.replace(tzinfo=timezone.utc) == t_future_dup
+
+    # 4. Ingest third distant future event (outside 300s window)
+    raw_future3 = [{
+        "timestamp": t_future_far.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "future_time_anomaly",
+        "description": "Adversary future clock manipulation",
+        "source_ip": "10.0.0.9",
+        "severity": "CRITICAL",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c_future3 = sensor._ingest_events(raw_future3, db_session)
+    assert len(c_future3) == 1
+    assert c_future3[0].id != future_alert.id
+    assert c_future3[0].occurrence_count == 1
+
+
+def test_out_of_order_stale_events_outside_window_create_separate_alert(db_session: Session):
+    """Verify that an out-of-order event arriving far in the past creates a distinct alert rather than merging."""
+    sensor = HostSecuritySensor()
+    t_now = datetime.now(timezone.utc)
+    t_stale = t_now - timedelta(seconds=600)  # 10 minutes prior (outside 300s window)
+
+    raw_now = [{
+        "timestamp": t_now.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "stale_out_of_order_test",
+        "description": "Testing boundary for out of order stale events",
+        "source_ip": "10.0.0.33",
+        "severity": "MEDIUM",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c_now = sensor._ingest_events(raw_now, db_session)
+    assert len(c_now) == 1
+    alert_now = c_now[0]
+
+    raw_stale = [{
+        "timestamp": t_stale.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "stale_out_of_order_test",
+        "description": "Testing boundary for out of order stale events",
+        "source_ip": "10.0.0.33",
+        "severity": "MEDIUM",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c_stale = sensor._ingest_events(raw_stale, db_session)
+    assert len(c_stale) == 1
+    alert_stale = c_stale[0]
+    assert alert_stale.id != alert_now.id
+    assert alert_stale.occurrence_count == 1
+    assert alert_stale.first_seen.replace(tzinfo=timezone.utc) == t_stale
+    assert alert_stale.last_seen.replace(tzinfo=timezone.utc) == t_stale
+
+    db_session.refresh(alert_now)
+    assert alert_now.occurrence_count == 1
+
+
+def test_log_upload_historical_batch_recurrence(client, db_session: Session):
+    """Verify that file upload of historical log events performs sliding recurrence deduplication."""
+    import json
+    import io
+
+    t0 = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=20)
+    t2 = t0 + timedelta(seconds=45)
+    t_out = t0 + timedelta(minutes=15)
+
+    events = [
+        {
+            "timestamp": t0.isoformat(),
+            "source_type": "Linux_Auth",
+            "event_type": "batch_upload_recurrence_test",
+            "description": "Automated log upload recurrence test",
+            "source_ip": "172.16.0.5",
+            "username": "guest",
+            "telemetry_origin": "HISTORICAL_LOG"
+        },
+        {
+            "timestamp": t1.isoformat(),
+            "source_type": "Linux_Auth",
+            "event_type": "batch_upload_recurrence_test",
+            "description": "Automated log upload recurrence test",
+            "source_ip": "172.16.0.5",
+            "username": "guest",
+            "telemetry_origin": "HISTORICAL_LOG"
+        },
+        {
+            "timestamp": t2.isoformat(),
+            "source_type": "Linux_Auth",
+            "event_type": "batch_upload_recurrence_test",
+            "description": "Automated log upload recurrence test",
+            "source_ip": "172.16.0.5",
+            "username": "guest",
+            "telemetry_origin": "HISTORICAL_LOG"
+        },
+        {
+            "timestamp": t_out.isoformat(),
+            "source_type": "Linux_Auth",
+            "event_type": "batch_upload_recurrence_test",
+            "description": "Automated log upload recurrence test",
+            "source_ip": "172.16.0.5",
+            "username": "guest",
+            "telemetry_origin": "HISTORICAL_LOG"
+        }
+    ]
+
+    payload_bytes = json.dumps(events).encode("utf-8")
+    response = client.post(
+        "/api/v1/alerts/upload",
+        files={"file": ("historical_recurrence.json", io.BytesIO(payload_bytes), "application/json")},
+        data={"source_type": "generic"}
+    )
+    assert response.status_code == 201
+
+    alerts = db_session.query(Alert).filter(
+        Alert.event_type == "batch_upload_recurrence_test"
+    ).order_by(Alert.timestamp.asc()).all()
+
+    assert len(alerts) == 2
+    # First alert deduplicated the 3 events within the sliding window
+    assert alerts[0].occurrence_count == 3
+    assert alerts[0].first_seen.replace(tzinfo=timezone.utc) == t0
+    assert alerts[0].last_seen.replace(tzinfo=timezone.utc) == t2
+
+    # Second alert is the event from 15 minutes later
+    assert alerts[1].occurrence_count == 1
+    assert alerts[1].first_seen.replace(tzinfo=timezone.utc) == t_out
+
+
+def test_multiple_candidate_alerts_picks_most_recent_occurrence(db_session: Session):
+    """Verify that recurrence matching picks the most recent active alert when multiple exist."""
+    sensor = HostSecuritySensor()
+    t0 = datetime(2026, 10, 10, 8, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(hours=1)   # 1 hour later
+    t2 = t1 + timedelta(seconds=60)  # 60s after t1 (within dedup window of t1, but outside t0)
+
+    # Ingest Alert 1
+    raw1 = [{
+        "timestamp": t0.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "multiple_candidates_test",
+        "description": "Multi candidate selection test",
+        "source_ip": "10.0.0.55",
+        "severity": "LOW",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c1 = sensor._ingest_events(raw1, db_session)
+    alert1 = c1[0]
+
+    # Ingest Alert 2
+    raw2 = [{
+        "timestamp": t1.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "multiple_candidates_test",
+        "description": "Multi candidate selection test",
+        "source_ip": "10.0.0.55",
+        "severity": "LOW",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c2 = sensor._ingest_events(raw2, db_session)
+    alert2 = c2[0]
+    assert alert1.id != alert2.id
+
+    # Ingest event near Alert 2
+    raw3 = [{
+        "timestamp": t2.isoformat(),
+        "source_type": "Host_Process_Sensor",
+        "event_type": "multiple_candidates_test",
+        "description": "Multi candidate selection test",
+        "source_ip": "10.0.0.55",
+        "severity": "LOW",
+        "telemetry_origin": "HOST_TELEMETRY"
+    }]
+    c3 = sensor._ingest_events(raw3, db_session)
+    assert len(c3) == 0  # Merged!
+
+    db_session.refresh(alert1)
+    db_session.refresh(alert2)
+    assert alert1.occurrence_count == 1
+    assert alert2.occurrence_count == 2
+    assert alert2.last_seen.replace(tzinfo=timezone.utc) == t2
+

@@ -105,7 +105,7 @@ def test_monitoring_controls_authorization_and_csrf():
     # Attempt state change with session cookie but missing X-CSRF-Token header
     bad_req = client.post(
         "/api/v1/host/monitor/toggle?active=false",
-        cookies={"soc_session": session_cookie}
+        headers={"Cookie": f"soc_session={session_cookie}"}
     )
     assert bad_req.status_code == 403
     assert "CSRF" in bad_req.json().get("detail", "")
