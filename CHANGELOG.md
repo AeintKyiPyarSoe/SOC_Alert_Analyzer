@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.6] - 2026-10-21
+
+### Changed
+- **Route Architecture & Shadowing Elimination**: Removed duplicate shadowed route handlers in `app/main.py` (`/api/v1/host/monitor/toggle`, `/api/v1/simulation/toggle`, `/api/v1/stream/toggle`, `/api/v1/stream/status`), moved `/api/v1/sample-data/load/{dataset_type}` to `app/api/routes.py`, and added route-organization assertions (`tests/test_route_organization.py`) guaranteeing zero duplicate path/method registrations across the application.
+- **Host Sensor Status & Event Loop Reliability**: Fixed `HostSecuritySensor.get_host_info()` to accurately report `stream_manager.host_monitoring_active` rather than `simulation_active`. Upgraded stream toggles to `async def` and stored application event loop references to guarantee dependable background task spawning on restart across execution contexts.
+- **Alert Recurrence Multi-Field Precision**: Refined deduplication matching in `host_sensor.py` and `routes.py` to evaluate `destination_ip` and `username`, preventing erroneous merging of distinct user accounts or network endpoints with identical generic rule descriptions.
+- **Hardened Fail-Closed Production Configuration**: Blocked insecure overrides by failing closed (`RuntimeError`) if `COOKIE_SECURE=false` or `DEMO_MODE=true` in `ENVIRONMENT=production`.
+- **Release Verification & Documentation**: Reconciled documentation, badges, changelog records, and evaluation metrics to accurately reflect **211 passing tests**, **86% (Linux) / 88% (Windows)** cross-platform test coverage, and v1.2.6 release status.
+
+---
+
 ## [1.2.5] - 2026-10-21
 
 ### Added
@@ -16,13 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Independent Modular Detection Benchmark Suite**: Centralized behavioral evaluation scenarios into a versioned modular dataset (`app/security/detection_benchmark.py` v2.1.0) with automated overlap and train/test data leakage assertions. Generates machine-readable evaluation reports (`docs/detection_evaluation_report.json`).
 - **Automated Checksum Verification & Packaging Integrity**: Added standalone verification script (`scripts/verify_release_checksum.py`) validating digest format, binary presence, and exact hash matches. Integrated automated SHA-256 assertions and smoke tests into CI and release workflows.
 - **Enforced CI Coverage Floor**: Integrated `--cov-fail-under=85` into GitHub Actions CI workflows, enforcing test coverage standards across Ubuntu and Windows matrices. Expanded automated test suite to **203 passing tests** with **88% code coverage**.
-
-### Changed
-- **Route Architecture & Shadowing Elimination**: Removed duplicate shadowed route handlers in `app/main.py` (`/api/v1/host/monitor/toggle`, `/api/v1/simulation/toggle`, `/api/v1/stream/toggle`, `/api/v1/stream/status`), moved `/api/v1/sample-data/load/{dataset_type}` to `app/api/routes.py`, and added route-organization assertions (`tests/test_route_organization.py`) guaranteeing zero duplicate path/method registrations across the application.
-- **Host Sensor Status & Event Loop Reliability**: Fixed `HostSecuritySensor.get_host_info()` to accurately report `stream_manager.host_monitoring_active` rather than `simulation_active`. Upgraded stream toggles to `async def` and stored application event loop references to guarantee dependable background task spawning on restart across execution contexts.
-- **Alert Recurrence Multi-Field Precision**: Refined deduplication matching in `host_sensor.py` and `routes.py` to evaluate `destination_ip` and `username`, preventing erroneous merging of distinct user accounts or network endpoints with identical generic rule descriptions.
-- **Hardened Fail-Closed Production Configuration**: Blocked insecure overrides by failing closed (`RuntimeError`) if `COOKIE_SECURE=false` or `DEMO_MODE=true` in `ENVIRONMENT=production`.
-- **Release Verification & Documentation**: Reconciled documentation, badges, changelog records, and evaluation metrics to accurately reflect **211 passing tests**, **86% (Linux) / 88% (Windows)** cross-platform test coverage, and v1.2.5 release status.
 
 ---
 
