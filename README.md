@@ -2,8 +2,8 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-203%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
-[![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-211%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Coverage](https://img.shields.io/badge/coverage-86%25%20(Linux)%20%7C%2088%25%20(Windows)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
@@ -231,7 +231,7 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
 ├── scripts/                  # Detection evaluation & utility automation scripts
-├── tests/                    # 203 automated pytest tests covering all subsystems (88% coverage)
+├── tests/                    # 211 automated pytest tests covering all subsystems (86% on Linux, 88% on Windows, >=85% CI floor)
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file

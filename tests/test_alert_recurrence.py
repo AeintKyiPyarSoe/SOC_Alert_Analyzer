@@ -239,3 +239,71 @@ def test_alert_response_serialization_compatibility(db_session: Session):
     assert serialized.first_seen is not None
     assert serialized.last_seen is not None
     assert serialized.id == alert.id
+
+
+def test_distinct_destination_ips_not_merged(db_session: Session):
+    """Verify that alerts with different destination IPs are never merged."""
+    sensor = HostSecuritySensor()
+    t = datetime.now(timezone.utc)
+    raw = [
+        {
+            "timestamp": t.isoformat(),
+            "source_type": "Firewall",
+            "event_type": "outbound_c2_attempt",
+            "description": "Suspicious outbound traffic to external IP",
+            "source_ip": "10.0.0.5",
+            "destination_ip": "198.51.100.1",
+            "severity": "HIGH",
+            "telemetry_origin": "HOST_TELEMETRY"
+        },
+        {
+            "timestamp": t.isoformat(),
+            "source_type": "Firewall",
+            "event_type": "outbound_c2_attempt",
+            "description": "Suspicious outbound traffic to external IP",
+            "source_ip": "10.0.0.5",
+            "destination_ip": "203.0.113.2",  # Different destination
+            "severity": "HIGH",
+            "telemetry_origin": "HOST_TELEMETRY"
+        }
+    ]
+
+    created = sensor._ingest_events(raw, db_session)
+    assert len(created) == 2
+    assert created[0].destination_ip != created[1].destination_ip
+    assert created[0].occurrence_count == 1
+    assert created[1].occurrence_count == 1
+
+
+def test_distinct_usernames_not_merged(db_session: Session):
+    """Verify that alerts involving different user accounts are never merged."""
+    sensor = HostSecuritySensor()
+    t = datetime.now(timezone.utc)
+    raw = [
+        {
+            "timestamp": t.isoformat(),
+            "source_type": "Linux_Auth",
+            "event_type": "ssh_brute_force",
+            "description": "Repeated SSH authentication failure",
+            "source_ip": "192.168.1.50",
+            "username": "root",
+            "severity": "HIGH",
+            "telemetry_origin": "HISTORICAL_LOG"
+        },
+        {
+            "timestamp": t.isoformat(),
+            "source_type": "Linux_Auth",
+            "event_type": "ssh_brute_force",
+            "description": "Repeated SSH authentication failure",
+            "source_ip": "192.168.1.50",
+            "username": "deploy_user",  # Different username
+            "severity": "HIGH",
+            "telemetry_origin": "HISTORICAL_LOG"
+        }
+    ]
+
+    created = sensor._ingest_events(raw, db_session)
+    assert len(created) == 2
+    assert created[0].username != created[1].username
+    assert created[0].occurrence_count == 1
+    assert created[1].occurrence_count == 1

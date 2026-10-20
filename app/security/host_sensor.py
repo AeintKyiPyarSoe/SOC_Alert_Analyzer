@@ -442,7 +442,7 @@ class HostSecuritySensor:
             "memory_usage_percent": mem.percent,
             "local_ips": local_ips,
             "process_count": len(psutil.pids()),
-            "monitoring_active": stream_manager.simulation_active
+            "monitoring_active": stream_manager.host_monitoring_active
         }
 
     def audit_network_sockets(self) -> List[Dict[str, Any]]:
@@ -630,6 +630,8 @@ class HostSecuritySensor:
                 Alert.description == normalized["description"],
                 Alert.source_type == normalized["source_type"],
                 Alert.source_ip == normalized.get("source_ip"),
+                Alert.destination_ip == normalized.get("destination_ip"),
+                Alert.username == normalized.get("username"),
                 Alert.status == "OPEN",
                 or_(
                     Alert.last_seen >= window_start,

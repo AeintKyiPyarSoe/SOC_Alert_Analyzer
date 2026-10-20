@@ -21,18 +21,34 @@ class ThreatStreamManager:
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
         self._simulator_task: Optional[asyncio.Task] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop):
+        """Record the application event loop for dependable task creation across threads."""
+        self._loop = loop
 
     def start_host_monitoring(self) -> bool:
         """Start or resume real host security monitoring."""
         self.host_monitoring_active = True
+        loop = None
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            loop = None
+            if self._loop and self._loop.is_running():
+                loop = self._loop
 
         if loop and (self._monitor_task is None or self._monitor_task.done()):
             from app.security.host_sensor import real_host_monitor_loop
-            self._monitor_task = loop.create_task(real_host_monitor_loop())
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+
+            if current_loop is loop:
+                self._monitor_task = loop.create_task(real_host_monitor_loop())
+            else:
+                self._monitor_task = asyncio.run_coroutine_threadsafe(real_host_monitor_loop(), loop)
             logger.info("Spawned host monitor background task.")
         return self.host_monitoring_active
 
@@ -48,14 +64,24 @@ class ThreatStreamManager:
     def start_simulation(self) -> bool:
         """Start or resume demonstration threat simulation."""
         self.simulation_active = True
+        loop = None
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            loop = None
+            if self._loop and self._loop.is_running():
+                loop = self._loop
 
         if loop and (self._simulator_task is None or self._simulator_task.done()):
             from app.security.simulator import live_threat_simulator_loop
-            self._simulator_task = loop.create_task(live_threat_simulator_loop())
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+
+            if current_loop is loop:
+                self._simulator_task = loop.create_task(live_threat_simulator_loop())
+            else:
+                self._simulator_task = asyncio.run_coroutine_threadsafe(live_threat_simulator_loop(), loop)
             logger.info("Spawned simulator background task.")
         return self.simulation_active
 

@@ -135,50 +135,6 @@ async def websocket_threats_endpoint(websocket: WebSocket):
     except Exception:
         await stream_manager.disconnect(websocket)
 
-@app.post("/api/v1/host/monitor/toggle")
-def toggle_host_monitor(
-    active: bool = Query(...),
-    user: User = Depends(require_role(Role.ANALYST))
-):
-    """Enable or pause genuine real-time host security monitoring. Requires ANALYST or ADMIN role."""
-    stream_manager.host_monitoring_active = active
-    return {
-        "status": "success",
-        "host_monitoring_active": stream_manager.host_monitoring_active
-    }
-
-@app.post("/api/v1/simulation/toggle")
-def toggle_simulation(
-    active: bool = Query(...),
-    user: User = Depends(require_role(Role.ANALYST))
-):
-    """Enable or pause synthetic demonstration threat simulation. Requires ANALYST or ADMIN role."""
-    stream_manager.simulation_active = active
-    return {
-        "status": "success",
-        "simulation_active": stream_manager.simulation_active
-    }
-
-@app.post("/api/v1/stream/toggle")
-def toggle_stream(
-    active: bool = Query(...),
-    user: User = Depends(require_role(Role.ANALYST))
-):
-    """Backward-compatible toggle controlling synthetic threat simulation. Requires ANALYST or ADMIN role."""
-    stream_manager.simulation_active = active
-    return {
-        "status": "success",
-        "simulation_active": stream_manager.simulation_active
-    }
-
-@app.get("/api/v1/stream/status")
-def get_stream_status():
-    """Check whether real-time host monitoring and simulation are actively running."""
-    return {
-        "host_monitoring_active": stream_manager.host_monitoring_active,
-        "simulation_active": stream_manager.simulation_active,
-        "connected_clients": len(stream_manager.active_connections)
-    }
 
 # -------------------------------------------------------------
 # Web UI Endpoints
@@ -479,54 +435,3 @@ def upload_view(request: Request, user: User = Depends(get_current_user)):
             "user": user
         }
     )
-
-@app.post("/api/v1/sample-data/load/{dataset_type}")
-def load_sample_dataset_route(
-    dataset_type: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_role(Role.ANALYST))
-):
-    """Helper route to inject sample files directly for fast demonstration. Requires ANALYST role."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        root_sample_dir = Path(sys._MEIPASS) / "sample_data"
-    else:
-        root_sample_dir = BASE_DIR.parent / "sample_data"
-    created = []
-
-    if dataset_type == "wazuh":
-        path = root_sample_dir / "wazuh" / "wazuh_alerts.json"
-        if not path.exists():
-            raise HTTPException(status_code=404, detail="Wazuh sample file missing.")
-        content = path.read_text(encoding="utf-8")
-        raw_events = WazuhParser().parse(content)
-    elif dataset_type == "suricata":
-        path = root_sample_dir / "suricata" / "suricata_eve.json"
-        if not path.exists():
-            raise HTTPException(status_code=404, detail="Suricata sample file missing.")
-        content = path.read_text(encoding="utf-8")
-        raw_events = SuricataParser().parse(content)
-    elif dataset_type in ("linux", "linux_auth"):
-        path = root_sample_dir / "linux" / "auth.log"
-        if not path.exists():
-            raise HTTPException(status_code=404, detail="Linux auth sample file missing.")
-        content = path.read_text(encoding="utf-8")
-        raw_events = LinuxAuthParser().parse(content)
-    else:
-        raise HTTPException(status_code=400, detail="Invalid dataset type.")
-
-    for raw in raw_events:
-        raw.setdefault("telemetry_origin", "HISTORICAL_LOG")
-        norm = AlertNormalizer.normalize(raw)
-        alert = Alert(id=uuid.uuid4(), **norm)
-        db.add(alert)
-        created.append(alert)
-
-    db.commit()
-    incidents = IncidentCorrelator.correlate_alerts(db)
-
-    return {
-        "status": "success",
-        "message": f"Successfully loaded {len(created)} sample {dataset_type} alerts.",
-        "alerts_count": len(created),
-        "incidents_created": len(incidents)
-    }

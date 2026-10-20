@@ -256,6 +256,8 @@ async def upload_log_file(
             Alert.description == normalized["description"],
             Alert.source_type == normalized["source_type"],
             Alert.source_ip == normalized.get("source_ip"),
+            Alert.destination_ip == normalized.get("destination_ip"),
+            Alert.username == normalized.get("username"),
             Alert.status == "OPEN",
             or_(
                 Alert.last_seen >= window_start,
@@ -550,7 +552,7 @@ def get_dashboard_stats(
 # -------------------------------------------------------------
 
 @router.post("/host/monitor/toggle")
-def toggle_host_monitor(
+async def toggle_host_monitor(
     active: bool = Query(...),
     user: User = Depends(require_role(Role.ANALYST))
 ):
@@ -565,7 +567,7 @@ def toggle_host_monitor(
     }
 
 @router.post("/simulation/toggle")
-def toggle_simulation(
+async def toggle_simulation(
     active: bool = Query(...),
     user: User = Depends(require_role(Role.ANALYST))
 ):
@@ -580,7 +582,7 @@ def toggle_simulation(
     }
 
 @router.post("/stream/toggle")
-def toggle_stream_backward_compat(
+async def toggle_stream_backward_compat(
     active: bool = Query(...),
     user: User = Depends(require_role(Role.ANALYST))
 ):
@@ -702,5 +704,62 @@ def get_audit_logs(
         "status": "success",
         "count": len(logs),
         "logs": logs
+    }
+
+@router.post("/sample-data/load/{dataset_type}")
+def load_sample_dataset_route(
+    dataset_type: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.ANALYST))
+):
+    """Helper route to inject sample files directly for fast demonstration. Requires ANALYST role."""
+    import sys
+    from pathlib import Path
+    from app.parsers.wazuh import WazuhParser
+    from app.parsers.suricata import SuricataParser
+    from app.parsers.linux_auth import LinuxAuthParser
+
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        root_sample_dir = Path(sys._MEIPASS) / "sample_data"
+    else:
+        root_sample_dir = Path(__file__).resolve().parent.parent.parent / "sample_data"
+    created = []
+
+    if dataset_type == "wazuh":
+        path = root_sample_dir / "wazuh" / "wazuh_alerts.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Wazuh sample file missing.")
+        content_txt = path.read_text(encoding="utf-8")
+        raw_events = WazuhParser().parse(content_txt)
+    elif dataset_type == "suricata":
+        path = root_sample_dir / "suricata" / "suricata_eve.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Suricata sample file missing.")
+        content_txt = path.read_text(encoding="utf-8")
+        raw_events = SuricataParser().parse(content_txt)
+    elif dataset_type in ("linux", "linux_auth"):
+        path = root_sample_dir / "linux" / "auth.log"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Linux auth sample file missing.")
+        content_txt = path.read_text(encoding="utf-8")
+        raw_events = LinuxAuthParser().parse(content_txt)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid dataset type.")
+
+    for raw in raw_events:
+        raw.setdefault("telemetry_origin", "HISTORICAL_LOG")
+        norm = AlertNormalizer.normalize(raw)
+        alert = Alert(id=uuid.uuid4(), **norm)
+        db.add(alert)
+        created.append(alert)
+
+    db.commit()
+    incidents = IncidentCorrelator.correlate_alerts(db)
+
+    return {
+        "status": "success",
+        "message": f"Successfully loaded {len(created)} sample {dataset_type} alerts.",
+        "alerts_count": len(created),
+        "incidents_created": len(incidents)
     }
 

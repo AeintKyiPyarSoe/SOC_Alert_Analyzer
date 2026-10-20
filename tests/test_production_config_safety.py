@@ -78,3 +78,25 @@ def test_development_defaults_cookie_secure_to_false(monkeypatch):
 
     s = Settings()
     assert s.COOKIE_SECURE is False
+
+
+def test_production_fails_when_cookie_secure_explicitly_disabled(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("SECRET_KEY", "a" * 32)
+    monkeypatch.setenv("ADMIN_API_KEY", "admin_secure_key_12345")
+    monkeypatch.setenv("COOKIE_SECURE", "false")
+
+    with pytest.raises(RuntimeError, match="COOKIE_SECURE cannot be disabled"):
+        Settings()
+
+
+def test_production_fails_when_demo_mode_enabled(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("SECRET_KEY", "a" * 32)
+    monkeypatch.setenv("ADMIN_API_KEY", "admin_secure_key_12345")
+    monkeypatch.setenv("DEMO_MODE", "true")
+
+    with pytest.raises(RuntimeError, match="DEMO_MODE cannot be enabled"):
+        Settings()

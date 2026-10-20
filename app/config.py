@@ -93,17 +93,23 @@ class Settings:
 
     def __init__(self):
         self.ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
-        self.DEMO_MODE: bool = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
+        _demo_mode_env = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
+        if self.ENVIRONMENT == "production" and _demo_mode_env:
+            raise RuntimeError(
+                "CRITICAL SECURITY ERROR: DEMO_MODE cannot be enabled when ENVIRONMENT is 'production'."
+            )
+        self.DEMO_MODE: bool = _demo_mode_env
 
         # Session & Cookie Security
         self.SESSION_EXPIRY_SECONDS: int = int(os.getenv("SESSION_EXPIRY_SECONDS", "43200"))
         self.WS_TICKET_EXPIRY_SECONDS: int = int(os.getenv("WS_TICKET_EXPIRY_SECONDS", "60"))
         _cookie_secure_env = os.getenv("COOKIE_SECURE")
         if self.ENVIRONMENT == "production":
-            if _cookie_secure_env is None:
-                self.COOKIE_SECURE: bool = True
-            else:
-                self.COOKIE_SECURE: bool = _cookie_secure_env.lower() in ("true", "1", "yes")
+            if _cookie_secure_env is not None and _cookie_secure_env.lower() in ("false", "0", "no"):
+                raise RuntimeError(
+                    "CRITICAL SECURITY ERROR: COOKIE_SECURE cannot be disabled when ENVIRONMENT is 'production'."
+                )
+            self.COOKIE_SECURE: bool = True
         else:
             self.COOKIE_SECURE: bool = _cookie_secure_env.lower() in ("true", "1", "yes") if _cookie_secure_env else False
 
