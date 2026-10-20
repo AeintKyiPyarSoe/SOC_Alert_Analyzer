@@ -145,7 +145,7 @@ Open your browser to `http://127.0.0.1:8000`.
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains an automated pytest test suite (**203 passing tests**, 100% pass rate, 88% code coverage) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
+The repository maintains an automated pytest test suite (**211 passing tests**, 100% pass rate, 86% on Linux / 88% on Windows with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
 
 ```powershell
 python -m pytest -v --cov=app --cov-report=term-missing
@@ -181,7 +181,7 @@ tests/test_stream_websocket.py::test_websocket_origin_validation_unit_tests PASS
 tests/test_stream_websocket.py::test_websocket_broadcast_filters_real_threats_from_demo_clients PASSED
 tests/test_upload_security.py::test_upload_binary_executable_rejected PASSED
 tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PASSED
-============================ 203 passed in 30.96s =============================
+======================= 211 passed, 1 warning in 33.59s =======================
 ```
 
 ### Continuous Integration (GitHub Actions)

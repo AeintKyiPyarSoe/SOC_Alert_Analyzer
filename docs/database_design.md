@@ -46,6 +46,9 @@ erDiagram
         varchar mitre_technique "e.g. T1110"
         varchar status "OPEN, INVESTIGATING, RESOLVED, FALSE_POSITIVE"
         text raw_log "Preserved original log string"
+        integer occurrence_count "Total observed occurrences"
+        timestamptz first_seen "Earliest detection boundary"
+        timestamptz last_seen "Latest detection boundary"
         timestamptz created_at "System ingestion timestamp"
     }
 
@@ -114,6 +117,9 @@ Stores canonical, normalized security events.
 | `mitre_technique` | `VARCHAR(32)` | Yes | `NULL` | Format `T[0-9]{4}(\.[0-9]{3})?` | MITRE ATT&CK technique reference ID. |
 | `status` | `VARCHAR(32)` | No | `'OPEN'` | `IN ('OPEN', 'INVESTIGATING', 'RESOLVED', 'FALSE_POSITIVE')` | Investigation lifecycle state. |
 | `raw_log` | `TEXT` | Yes | `NULL` | — | Original raw log string for forensic verification. |
+| `occurrence_count` | `INTEGER` | No | `1` | `CHECK (occurrence_count >= 1)` | Monotonically incrementing occurrence counter for sliding-window deduplicated detections. |
+| `first_seen` | `TIMESTAMPTZ` | Yes | `NULL` | — | Earliest chronological observation timestamp of the alert. |
+| `last_seen` | `TIMESTAMPTZ` | Yes | `NULL` | Indexed | Latest chronological observation timestamp of the recurring alert. |
 | `created_at` | `TIMESTAMPTZ` | No | `CURRENT_TIMESTAMP` | `NOT NULL` | Time record was saved to the database. |
 
 ---
