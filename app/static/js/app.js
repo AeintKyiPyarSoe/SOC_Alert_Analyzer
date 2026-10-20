@@ -17,7 +17,8 @@ const SOC_STATE = {
     sort: 'priority',       // 'priority', 'newest'
     sessionReviewed: new Set(),
     checklistProgress: {},  // alertId -> Array of checked step indices
-    isSimulationActive: true
+    isHostMonitoringActive: true,
+    isSimulationActive: false
 };
 
 // --------------------------------------------------------------------------
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadInitialRealHostAlerts();
     initEventHandlers();
     initThreatStream();
+    initStreamStatus();
     checkAuthStatus();
     renderAll();
 });
@@ -1083,23 +1085,74 @@ async function clearAllAlerts() {
     }
 }
 
-async function toggleSimulation() {
-    SOC_STATE.isSimulationActive = !SOC_STATE.isSimulationActive;
-    const btn = document.getElementById('btn-toggle-sim');
+function updateControlButtons() {
+    const btnHost = document.getElementById('btn-toggle-host-monitor');
+    if (btnHost) {
+        btnHost.textContent = SOC_STATE.isHostMonitoringActive ? '⚡ Host Sensor: ACTIVE' : '⏸️ Host Sensor: PAUSED';
+        btnHost.classList.toggle('btn-outline', SOC_STATE.isHostMonitoringActive);
+        btnHost.classList.toggle('btn-secondary', !SOC_STATE.isHostMonitoringActive);
+    }
+    const btnSim = document.getElementById('btn-toggle-sim');
+    if (btnSim) {
+        btnSim.textContent = SOC_STATE.isSimulationActive ? '🎮 Simulation: ACTIVE' : '⏸️ Simulation: PAUSED';
+        btnSim.classList.toggle('btn-outline', SOC_STATE.isSimulationActive);
+        btnSim.classList.toggle('btn-secondary', !SOC_STATE.isSimulationActive);
+    }
+}
 
+async function initStreamStatus() {
     try {
-        await fetch(`/api/v1/stream/toggle?active=${SOC_STATE.isSimulationActive}`, {
+        const resp = await fetch('/api/v1/stream/status');
+        if (resp.ok) {
+            const data = await resp.json();
+            SOC_STATE.isHostMonitoringActive = !!data.host_monitoring_active;
+            SOC_STATE.isSimulationActive = !!data.simulation_active;
+            updateControlButtons();
+        }
+    } catch (e) {
+        // Use defaults
+    }
+}
+
+async function toggleHostMonitoring() {
+    const targetState = !SOC_STATE.isHostMonitoringActive;
+    try {
+        const resp = await fetch(`/api/v1/host/monitor/toggle?active=${targetState}`, {
             method: 'POST',
             headers: getApiHeaders()
         });
-        if (btn) {
-            btn.textContent = SOC_STATE.isSimulationActive ? '⚡ Sensor: ON' : '⏸️ Sensor: PAUSED';
-            btn.classList.toggle('btn-outline', SOC_STATE.isSimulationActive);
-            btn.classList.toggle('btn-secondary', !SOC_STATE.isSimulationActive);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(`Failed to update host sensor: ${err.detail || resp.statusText}`);
+            return;
         }
-        showToast(SOC_STATE.isSimulationActive ? 'Background sensor active' : 'Background sensor paused');
+        const data = await resp.json();
+        SOC_STATE.isHostMonitoringActive = !!data.host_monitoring_active;
+        updateControlButtons();
+        showToast(SOC_STATE.isHostMonitoringActive ? 'Host sensor active' : 'Host sensor paused');
     } catch (e) {
-        if (btn) btn.textContent = SOC_STATE.isSimulationActive ? '⚡ Sensor: ON' : '⏸️ Sensor: PAUSED';
+        showToast('Network error updating host sensor status');
+    }
+}
+
+async function toggleSimulation() {
+    const targetState = !SOC_STATE.isSimulationActive;
+    try {
+        const resp = await fetch(`/api/v1/simulation/toggle?active=${targetState}`, {
+            method: 'POST',
+            headers: getApiHeaders()
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(`Failed to update simulation: ${err.detail || resp.statusText}`);
+            return;
+        }
+        const data = await resp.json();
+        SOC_STATE.isSimulationActive = !!data.simulation_active;
+        updateControlButtons();
+        showToast(SOC_STATE.isSimulationActive ? 'Demonstration simulation active' : 'Demonstration simulation paused');
+    } catch (e) {
+        showToast('Network error updating simulation status');
     }
 }
 

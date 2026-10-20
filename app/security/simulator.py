@@ -100,7 +100,7 @@ def generate_and_save_live_threat() -> Dict[str, Any]:
 
         # Normalize
         norm = AlertNormalizer.normalize(template)
-        alert = Alert(id=uuid.uuid4(), **norm)
+        alert = Alert(id=uuid.uuid4(), occurrence_count=1, first_seen=norm["timestamp"], last_seen=norm["timestamp"], **norm)
         db.add(alert)
         db.commit()
 

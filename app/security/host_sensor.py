@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional, Set
 
 import psutil
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 
 from app.config import settings
 from app.database.connection import SessionLocal
@@ -617,16 +618,35 @@ class HostSecuritySensor:
         created_alerts = []
         for raw in raw_events:
             normalized = AlertNormalizer.normalize(raw)
-            # Deduplicate: if an identical OPEN alert already exists within the sliding time window, do not duplicate
+            ev_ts = normalized["timestamp"]
+            if ev_ts.tzinfo is None:
+                ev_ts = ev_ts.replace(tzinfo=timezone.utc)
+
+            # Deduplicate: if an identical OPEN alert already exists within the sliding time window, update recurrence tracking
             dedup_window = getattr(settings, "DEDUP_WINDOW_SECONDS", 300)
             window_start = datetime.now(timezone.utc) - timedelta(seconds=dedup_window)
             existing = db.query(Alert).filter(
                 Alert.event_type == normalized["event_type"],
                 Alert.description == normalized["description"],
+                Alert.source_type == normalized["source_type"],
+                Alert.source_ip == normalized.get("source_ip"),
                 Alert.status == "OPEN",
-                Alert.timestamp >= window_start
+                or_(
+                    Alert.last_seen >= window_start,
+                    and_(Alert.last_seen.is_(None), Alert.timestamp >= window_start)
+                )
             ).first()
             if existing:
+                existing.occurrence_count = (existing.occurrence_count or 1) + 1
+                curr_first = existing.first_seen or existing.timestamp
+                if curr_first.tzinfo is None:
+                    curr_first = curr_first.replace(tzinfo=timezone.utc)
+                curr_last = existing.last_seen or existing.timestamp
+                if curr_last.tzinfo is None:
+                    curr_last = curr_last.replace(tzinfo=timezone.utc)
+                existing.first_seen = min(curr_first, ev_ts)
+                existing.last_seen = max(curr_last, ev_ts)
+                db.commit()
                 continue
 
             alert = Alert(
@@ -646,7 +666,10 @@ class HostSecuritySensor:
                 risk_score=normalized["risk_score"],
                 mitre_technique=normalized["mitre_technique"],
                 status="OPEN",
-                raw_log=normalized.get("raw_log")
+                raw_log=normalized.get("raw_log"),
+                occurrence_count=1,
+                first_seen=normalized["timestamp"],
+                last_seen=normalized["timestamp"]
             )
             db.add(alert)
             created_alerts.append(alert)
@@ -728,7 +751,7 @@ class HostSecuritySensor:
         chosen["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         norm = AlertNormalizer.normalize(chosen)
-        alert = Alert(id=uuid.uuid4(), **norm)
+        alert = Alert(id=uuid.uuid4(), occurrence_count=1, first_seen=norm["timestamp"], last_seen=norm["timestamp"], **norm)
         db.add(alert)
         db.commit()
 

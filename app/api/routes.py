@@ -1,11 +1,11 @@
 import uuid
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request, Response, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_, func
+from sqlalchemy import desc, or_, and_, func
 
 from app.config import settings
 from app.database.connection import get_db
@@ -239,12 +239,43 @@ async def upload_log_file(
             detail=f"Uploaded log file extracted {len(raw_events)} events, which exceeds the limit of {settings.MAX_EVENTS_PER_UPLOAD} events per upload."
         )
 
-    # Normalize and persist alerts using bounded memory batches
+    # Normalize and persist alerts using bounded memory batches with recurrence tracking
     total_ingested = 0
     batch = []
+    dedup_window = getattr(settings, "DEDUP_WINDOW_SECONDS", 300)
     for raw_ev in raw_events:
         raw_ev.setdefault("telemetry_origin", "HISTORICAL_LOG")
         normalized = AlertNormalizer.normalize(raw_ev)
+        ev_ts = normalized["timestamp"]
+        if ev_ts.tzinfo is None:
+            ev_ts = ev_ts.replace(tzinfo=timezone.utc)
+
+        window_start = datetime.now(timezone.utc) - timedelta(seconds=dedup_window)
+        existing = db.query(Alert).filter(
+            Alert.event_type == normalized["event_type"],
+            Alert.description == normalized["description"],
+            Alert.source_type == normalized["source_type"],
+            Alert.source_ip == normalized.get("source_ip"),
+            Alert.status == "OPEN",
+            or_(
+                Alert.last_seen >= window_start,
+                and_(Alert.last_seen.is_(None), Alert.timestamp >= window_start)
+            )
+        ).first()
+
+        if existing:
+            existing.occurrence_count = (existing.occurrence_count or 1) + 1
+            curr_first = existing.first_seen or existing.timestamp
+            if curr_first.tzinfo is None:
+                curr_first = curr_first.replace(tzinfo=timezone.utc)
+            curr_last = existing.last_seen or existing.timestamp
+            if curr_last.tzinfo is None:
+                curr_last = curr_last.replace(tzinfo=timezone.utc)
+            existing.first_seen = min(curr_first, ev_ts)
+            existing.last_seen = max(curr_last, ev_ts)
+            total_ingested += 1
+            continue
+
         alert = Alert(
             id=uuid.uuid4(),
             timestamp=normalized["timestamp"],
@@ -262,7 +293,10 @@ async def upload_log_file(
             risk_score=normalized["risk_score"],
             mitre_technique=normalized["mitre_technique"],
             status="OPEN",
-            raw_log=normalized.get("raw_log")
+            raw_log=normalized.get("raw_log"),
+            occurrence_count=1,
+            first_seen=normalized["timestamp"],
+            last_seen=normalized["timestamp"]
         )
         batch.append(alert)
         if len(batch) >= settings.DB_BATCH_SIZE:
@@ -521,7 +555,10 @@ def toggle_host_monitor(
     user: User = Depends(require_role(Role.ANALYST))
 ):
     """Enable or pause genuine host security monitoring. Requires ANALYST or ADMIN role."""
-    stream_manager.host_monitoring_active = active
+    if active:
+        stream_manager.start_host_monitoring()
+    else:
+        stream_manager.stop_host_monitoring()
     return {
         "status": "success",
         "host_monitoring_active": stream_manager.host_monitoring_active
@@ -533,7 +570,10 @@ def toggle_simulation(
     user: User = Depends(require_role(Role.ANALYST))
 ):
     """Enable or pause synthetic demonstration threat simulation. Requires ANALYST or ADMIN role."""
-    stream_manager.simulation_active = active
+    if active:
+        stream_manager.start_simulation()
+    else:
+        stream_manager.stop_simulation()
     return {
         "status": "success",
         "simulation_active": stream_manager.simulation_active
@@ -545,7 +585,10 @@ def toggle_stream_backward_compat(
     user: User = Depends(require_role(Role.ANALYST))
 ):
     """Backward-compatible toggle controlling synthetic threat simulation. Requires ANALYST or ADMIN role."""
-    stream_manager.simulation_active = active
+    if active:
+        stream_manager.start_simulation()
+    else:
+        stream_manager.stop_simulation()
     return {
         "status": "success",
         "simulation_active": stream_manager.simulation_active

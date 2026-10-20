@@ -43,6 +43,14 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(32), default="OPEN", index=True)
     raw_log: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    first_seen: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    last_seen: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -58,4 +66,5 @@ class Alert(Base):
         Index("idx_alerts_status_timestamp", "status", "timestamp"),
         Index("idx_alerts_severity_timestamp", "severity", "timestamp"),
         Index("idx_alerts_origin_timestamp", "telemetry_origin", "timestamp"),
+        Index("idx_alerts_dedup", "event_type", "source_type", "source_ip", "status", "last_seen"),
     )

@@ -21,8 +21,11 @@
         <button class="btn btn-outline btn-sm" id="btn-clear-alerts" onclick="clearAllAlerts()" title="Clear alert history and re-audit host">
             🗑️ Clear History
         </button>
-        <button class="btn btn-outline btn-sm" id="btn-toggle-sim" onclick="toggleSimulation()" title="Pause or resume continuous background sensor">
-            ⚡ Sensor: ON
+        <button class="btn btn-outline btn-sm" id="btn-toggle-host-monitor" onclick="toggleHostMonitoring()" title="Pause or resume continuous host security sensor">
+            ⚡ Host Sensor: ACTIVE
+        </button>
+        <button class="btn btn-secondary btn-sm" id="btn-toggle-sim" onclick="toggleSimulation()" title="Pause or resume synthetic threat simulation stream">
+            🎮 Simulation: PAUSED
         </button>
         <button class="btn btn-secondary btn-sm" onclick="openPlaygroundModal()" title="Explore or import synthetic Wazuh / Suricata datasets">
             <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 from fastapi import WebSocket, WebSocketDisconnect
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +16,79 @@ class ThreatStreamManager:
 
     def __init__(self):
         self.active_connections: Dict[WebSocket, Any] = {}
-        self.host_monitoring_active: bool = True
-        self.simulation_active: bool = False
+        self.host_monitoring_active: bool = getattr(settings, "HOST_MONITORING_ENABLED", True)
+        self.simulation_active: bool = getattr(settings, "SIMULATION_ENABLED", False)
         self._lock = asyncio.Lock()
+        self._monitor_task: Optional[asyncio.Task] = None
+        self._simulator_task: Optional[asyncio.Task] = None
+
+    def start_host_monitoring(self) -> bool:
+        """Start or resume real host security monitoring."""
+        self.host_monitoring_active = True
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and (self._monitor_task is None or self._monitor_task.done()):
+            from app.security.host_sensor import real_host_monitor_loop
+            self._monitor_task = loop.create_task(real_host_monitor_loop())
+            logger.info("Spawned host monitor background task.")
+        return self.host_monitoring_active
+
+    def stop_host_monitoring(self) -> bool:
+        """Pause real host security monitoring and cancel the running background task."""
+        self.host_monitoring_active = False
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            self._monitor_task = None
+            logger.info("Cancelled host monitor background task.")
+        return self.host_monitoring_active
+
+    def start_simulation(self) -> bool:
+        """Start or resume demonstration threat simulation."""
+        self.simulation_active = True
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and (self._simulator_task is None or self._simulator_task.done()):
+            from app.security.simulator import live_threat_simulator_loop
+            self._simulator_task = loop.create_task(live_threat_simulator_loop())
+            logger.info("Spawned simulator background task.")
+        return self.simulation_active
+
+    def stop_simulation(self) -> bool:
+        """Pause demonstration threat simulation and cancel the running background task."""
+        self.simulation_active = False
+        if self._simulator_task and not self._simulator_task.done():
+            self._simulator_task.cancel()
+            self._simulator_task = None
+            logger.info("Cancelled simulator background task.")
+        return self.simulation_active
+
+    async def shutdown(self):
+        """Cleanly cancel and await all background monitoring and simulation tasks."""
+        self.host_monitoring_active = False
+        self.simulation_active = False
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        tasks = []
+        for t in (self._monitor_task, self._simulator_task):
+            if t and not t.done():
+                t.cancel()
+                task_loop = getattr(t, "get_loop", lambda: None)()
+                if current_loop and task_loop is current_loop:
+                    tasks.append(t)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._monitor_task = None
+        self._simulator_task = None
+        logger.info("Cleanly shut down all background stream tasks.")
 
     async def connect(self, websocket: WebSocket, user: Optional[Any] = None):
         await websocket.accept()

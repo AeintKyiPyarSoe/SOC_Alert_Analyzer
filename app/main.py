@@ -52,13 +52,20 @@ async def lifespan(app: FastAPI):
     # Startup: initialize database tables & audit local host baseline
     init_db()
     initial_host_baseline()
-    # Start continuous real host security monitor and synthetic demo simulator
-    monitor_task = asyncio.create_task(real_host_monitor_loop())
-    simulator_task = asyncio.create_task(live_threat_simulator_loop())
+    # Authoritative configuration initialization for monitoring and simulation
+    if settings.HOST_MONITORING_ENABLED:
+        stream_manager.start_host_monitoring()
+    else:
+        stream_manager.stop_host_monitoring()
+
+    if settings.SIMULATION_ENABLED:
+        stream_manager.start_simulation()
+    else:
+        stream_manager.stop_simulation()
+
     yield
-    monitor_task.cancel()
-    simulator_task.cancel()
-    await asyncio.gather(monitor_task, simulator_task, return_exceptions=True)
+
+    await stream_manager.shutdown()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

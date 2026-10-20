@@ -1,0 +1,449 @@
+{
+  "benchmark_version": "2.1.0",
+  "dataset_type": "Curated Synthetic Behavioral Benchmark (User-Space EDR-Lite)",
+  "limitations": "Empirical evaluation is performed on synthetic process execution scenarios. These metrics reflect detection capability against modeled TTPs and administrative edge cases, but do NOT guarantee detection against novel kernel-level exploits or evasive zero-days.",
+  "development_dataset": {
+    "name": "Development Baseline (20 Curated)",
+    "support": 20,
+    "true_positives": 10,
+    "false_positives": 0,
+    "true_negatives": 10,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "specificity": 1.0,
+    "f1_score": 1.0,
+    "false_positive_rate": 0.0,
+    "accuracy": 1.0,
+    "results": [
+      {
+        "scenario_id": "dev_webshell_w3wp",
+        "family": "WebShell",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1505.003"
+      },
+      {
+        "scenario_id": "dev_maldoc_word",
+        "family": "Maldoc",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1204.002"
+      },
+      {
+        "scenario_id": "dev_shadow_purge",
+        "family": "Ransomware",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1490"
+      },
+      {
+        "scenario_id": "dev_masquerading_svchost",
+        "family": "Masquerading",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1036.005"
+      },
+      {
+        "scenario_id": "dev_offensive_mimikatz",
+        "family": "CredentialDumping",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059"
+      },
+      {
+        "scenario_id": "dev_encoded_ps",
+        "family": "DefenseEvasion",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059.001"
+      },
+      {
+        "scenario_id": "dev_tunneling_chisel",
+        "family": "CommandAndControl",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059"
+      },
+      {
+        "scenario_id": "dev_cradle_download",
+        "family": "DefenseEvasion",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059.001"
+      },
+      {
+        "scenario_id": "dev_maldoc_excel",
+        "family": "Maldoc",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1204.002"
+      },
+      {
+        "scenario_id": "dev_temp_execution",
+        "family": "Masquerading",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1036"
+      },
+      {
+        "scenario_id": "dev_benign_chrome",
+        "family": "BenignWorkstation",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_vscode",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_svchost",
+        "family": "BenignSystem",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_ps_diag",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_notepad",
+        "family": "BenignWorkstation",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_devserver",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_temp_updater",
+        "family": "BenignWorkstation",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_admin_script",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_lsass",
+        "family": "BenignSystem",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "dev_benign_node",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      }
+    ]
+  },
+  "held_out_dataset": {
+    "name": "Held-Out Benchmark (30 Scenarios)",
+    "support": 30,
+    "true_positives": 15,
+    "false_positives": 0,
+    "true_negatives": 15,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "specificity": 1.0,
+    "f1_score": 1.0,
+    "false_positive_rate": 0.0,
+    "accuracy": 1.0,
+    "results": [
+      {
+        "scenario_id": "held_out_webshell_nginx",
+        "family": "WebShell",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1505.003"
+      },
+      {
+        "scenario_id": "held_out_maldoc_powerpnt",
+        "family": "Maldoc",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1204.002"
+      },
+      {
+        "scenario_id": "held_out_ransomware_wmic",
+        "family": "Ransomware",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1490"
+      },
+      {
+        "scenario_id": "held_out_ransomware_wbadmin",
+        "family": "Ransomware",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1490"
+      },
+      {
+        "scenario_id": "held_out_masquerading_lsass",
+        "family": "Masquerading",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1036.005"
+      },
+      {
+        "scenario_id": "held_out_masquerading_csrss",
+        "family": "Masquerading",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1036.005"
+      },
+      {
+        "scenario_id": "held_out_offensive_bloodhound",
+        "family": "Discovery",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059"
+      },
+      {
+        "scenario_id": "held_out_offensive_xmrig",
+        "family": "Impact",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1496"
+      },
+      {
+        "scenario_id": "held_out_offensive_psexec",
+        "family": "LateralMovement",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059"
+      },
+      {
+        "scenario_id": "held_out_encoded_pwsh",
+        "family": "DefenseEvasion",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059.001"
+      },
+      {
+        "scenario_id": "held_out_cradle_iex",
+        "family": "DefenseEvasion",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1059.001"
+      },
+      {
+        "scenario_id": "held_out_cred_procdump",
+        "family": "CredentialDumping",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1003"
+      },
+      {
+        "scenario_id": "held_out_cred_sekurlsa",
+        "family": "CredentialDumping",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1003"
+      },
+      {
+        "scenario_id": "held_out_certutil_ingress",
+        "family": "IngressToolTransfer",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1105"
+      },
+      {
+        "scenario_id": "held_out_firewall_disabled",
+        "family": "DefenseImpairment",
+        "is_malicious": true,
+        "detected": true,
+        "category": "TP",
+        "mitre_technique": "T1562.001"
+      },
+      {
+        "scenario_id": "held_out_benign_dev_git",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_dev_cargo",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_dev_npm",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_sys_ping",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_sys_tracert",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_sys_tasklist",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_sys_systeminfo",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_netsh_status",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_certutil_verify",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_notepad_shadow",
+        "family": "BenignWorkstation",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_python_pytest",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_powershell_diag",
+        "family": "BenignAdmin",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_appdata_slack",
+        "family": "BenignWorkstation",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_system32_csrss",
+        "family": "BenignSystem",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      },
+      {
+        "scenario_id": "held_out_benign_vscode_updater",
+        "family": "BenignDeveloper",
+        "is_malicious": false,
+        "detected": false,
+        "category": "TN",
+        "mitre_technique": null
+      }
+    ]
+  },
+  "overall_summary": {
+    "total_support": 50,
+    "true_positives": 25,
+    "false_positives": 0,
+    "true_negatives": 25,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "false_positive_rate": 0.0,
+    "accuracy": 1.0
+  }
+}

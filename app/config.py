@@ -86,7 +86,7 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.4"
+    VERSION: str = "1.2.5"
     API_V1_STR: str = "/api/v1"
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
@@ -98,7 +98,14 @@ class Settings:
         # Session & Cookie Security
         self.SESSION_EXPIRY_SECONDS: int = int(os.getenv("SESSION_EXPIRY_SECONDS", "43200"))
         self.WS_TICKET_EXPIRY_SECONDS: int = int(os.getenv("WS_TICKET_EXPIRY_SECONDS", "60"))
-        self.COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
+        _cookie_secure_env = os.getenv("COOKIE_SECURE")
+        if self.ENVIRONMENT == "production":
+            if _cookie_secure_env is None:
+                self.COOKIE_SECURE: bool = True
+            else:
+                self.COOKIE_SECURE: bool = _cookie_secure_env.lower() in ("true", "1", "yes")
+        else:
+            self.COOKIE_SECURE: bool = _cookie_secure_env.lower() in ("true", "1", "yes") if _cookie_secure_env else False
 
         # Database Configuration
         _pg_user = os.getenv("POSTGRES_USER")
@@ -133,6 +140,10 @@ class Settings:
             if not self.AUTH_ENABLED:
                 raise RuntimeError(
                     "CRITICAL SECURITY ERROR: AUTH_ENABLED cannot be disabled when ENVIRONMENT is set to 'production'."
+                )
+            if self.ALLOW_INSECURE_AUTH_DISABLED:
+                raise RuntimeError(
+                    "CRITICAL SECURITY ERROR: ALLOW_INSECURE_AUTH_DISABLED cannot be enabled when ENVIRONMENT is 'production'."
                 )
             if not _env_admin_key or "default" in _env_admin_key.lower():
                 raise RuntimeError(

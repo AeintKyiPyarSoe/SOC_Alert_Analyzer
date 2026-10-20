@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 class AlertBase(BaseModel):
@@ -20,6 +20,9 @@ class AlertBase(BaseModel):
     mitre_technique: Optional[str] = None
     status: str = "OPEN"
     raw_log: Optional[str] = None
+    occurrence_count: int = 1
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
 
 class AlertCreate(AlertBase):
     pass

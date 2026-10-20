@@ -70,6 +70,7 @@ hiddenimports = [
     'app.security.session',
     'app.security.ip_utils',
     'app.security.upload_security',
+    'app.security.detection_benchmark',
     'app.database.connection',
     'app.config',
     'app.main',

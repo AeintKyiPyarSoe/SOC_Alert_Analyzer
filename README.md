@@ -2,13 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-179%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-203%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.2.4-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.5-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Less noise. More clarity.**  
@@ -145,7 +145,7 @@ Open your browser to `http://127.0.0.1:8000`.
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains an automated pytest test suite (**179 passing tests**, 100% pass rate, 88% code coverage) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
+The repository maintains an automated pytest test suite (**203 passing tests**, 100% pass rate, 88% code coverage) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
 
 ```powershell
 python -m pytest -v --cov=app --cov-report=term-missing
@@ -181,7 +181,7 @@ tests/test_stream_websocket.py::test_websocket_origin_validation_unit_tests PASS
 tests/test_stream_websocket.py::test_websocket_broadcast_filters_real_threats_from_demo_clients PASSED
 tests/test_upload_security.py::test_upload_binary_executable_rejected PASSED
 tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PASSED
-============================ 179 passed in 25.27s =============================
+============================ 203 passed in 30.96s =============================
 ```
 
 ### Continuous Integration (GitHub Actions)
@@ -231,7 +231,7 @@ tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PAS
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
 ├── scripts/                  # Detection evaluation & utility automation scripts
-├── tests/                    # 179 automated pytest tests covering all subsystems (88% coverage)
+├── tests/                    # 203 automated pytest tests covering all subsystems (88% coverage)
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file

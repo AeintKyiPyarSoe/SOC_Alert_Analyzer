@@ -61,6 +61,20 @@ def init_db():
                     conn.execute(text("ALTER TABLE alerts ADD COLUMN telemetry_origin VARCHAR(32) DEFAULT 'HISTORICAL_LOG'"))
                     logger.info("Migrated SQLite: added column 'telemetry_origin' to alerts.")
 
+                if "occurrence_count" not in existing_cols and len(existing_cols) > 0:
+                    conn.execute(text("ALTER TABLE alerts ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1"))
+                    logger.info("Migrated SQLite: added column 'occurrence_count' to alerts.")
+
+                if "first_seen" not in existing_cols and len(existing_cols) > 0:
+                    conn.execute(text("ALTER TABLE alerts ADD COLUMN first_seen TIMESTAMP"))
+                    conn.execute(text("UPDATE alerts SET first_seen = timestamp WHERE first_seen IS NULL"))
+                    logger.info("Migrated SQLite: added column 'first_seen' to alerts.")
+
+                if "last_seen" not in existing_cols and len(existing_cols) > 0:
+                    conn.execute(text("ALTER TABLE alerts ADD COLUMN last_seen TIMESTAMP"))
+                    conn.execute(text("UPDATE alerts SET last_seen = timestamp WHERE last_seen IS NULL"))
+                    logger.info("Migrated SQLite: added column 'last_seen' to alerts.")
+
                 # Check columns in incidents table
                 res_inc = conn.execute(text("PRAGMA table_info(incidents)")).fetchall()
                 existing_inc_cols = {row[1] for row in res_inc}

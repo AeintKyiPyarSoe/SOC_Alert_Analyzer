@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.5] - 2026-10-21
+
+### Added
+- **Synchronized Monitoring & Simulation Controls**: Authoritative configuration-driven initialization for real host security monitoring (`HOST_MONITORING_ENABLED`) and demonstration threat simulation (`SIMULATION_ENABLED`). Disentangled frontend dashboard controls into dedicated `Host Sensor` and `Simulation` buttons backed by non-optimistic confirmed state updates (`app/security/stream.py`, `app/main.py`, `app/static/js/app.js`, `app/templates/dashboard.html`).
+- **Persistent Alert Recurrence Tracking & Deduplication**: Extended the `Alert` database model with `occurrence_count`, `first_seen`, and `last_seen` timestamp boundaries. Deduplication within sliding time windows (`DEDUP_WINDOW_SECONDS = 300`) monotonically increments occurrences and updates chronological visibility windows rather than silently dropping repeated detections. Includes lightweight auto-migration and Alembic migration `31a8e8b2f901` (`app/models/alert.py`, `app/database/connection.py`, `alembic/versions/31a8e8b2f901_add_alert_recurrence_tracking.py`).
+- **Production Configuration Fail-Closed Safety**: Enforced strict validation ensuring production environments cannot disable authentication or activate insecure testing bypasses (`ALLOW_INSECURE_AUTH_DISABLED`). Session cookies automatically default to the `Secure` attribute in production deployments while preserving seamless local loopback HTTP operation in development and standalone desktop modes (`app/config.py`).
+- **Independent Modular Detection Benchmark Suite**: Centralized behavioral evaluation scenarios into a versioned modular dataset (`app/security/detection_benchmark.py` v2.1.0) with automated overlap and train/test data leakage assertions. Generates machine-readable evaluation reports (`docs/detection_evaluation_report.json`).
+- **Automated Checksum Verification & Packaging Integrity**: Added standalone verification script (`scripts/verify_release_checksum.py`) validating digest format, binary presence, and exact hash matches. Integrated automated SHA-256 assertions and smoke tests into CI and release workflows.
+- **Enforced CI Coverage Floor**: Integrated `--cov-fail-under=85` into GitHub Actions CI workflows, enforcing test coverage standards across Ubuntu and Windows matrices. Expanded automated test suite to **203 passing tests** with **88% code coverage**.
+
+### Changed
+- **Release Verification & Documentation**: Reconciled all documentation, README badges, changelog records, and evaluation metrics to accurately reflect 203 passing tests, 88% test coverage, and v1.2.5 release status.
+
+---
+
 ## [1.2.4] - 2026-10-20
 
 ### Added

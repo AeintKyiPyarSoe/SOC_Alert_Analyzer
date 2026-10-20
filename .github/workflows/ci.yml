@@ -38,7 +38,7 @@ jobs:
 
       - name: Run Pytest Suite with Coverage
         run: |
-          python -m pytest -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml
+          python -m pytest -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=85
 
       - name: Run Empirical Detection Evaluation Benchmark
         run: |
