@@ -191,9 +191,9 @@ Following the v1.2.2 stabilization, SOC Alert Analyzer underwent a rigorous secu
 
 ---
 
-## 8. Version 1.2.6 Architecture Hardening, Ingestion Optimization & Executable Verification
+## 8. Version 1.2.7 Architecture Hardening, Ingestion Optimization & Executable Verification
 
-### Executive Overview (v1.2.6)
+### Executive Overview (v1.2.7)
 Following the v1.2.5 baseline, SOC Alert Analyzer completed a comprehensive four-step engineering pass hardening alert recurrence provenance isolation, eliminating ingestion database bottlenecks, verifying full multi-OS CI matrix compatibility across 230 tests, and building and verifying the real standalone Windows executable.
 
 ### Summary of Engineering Hardening Delivered
@@ -214,24 +214,23 @@ Following the v1.2.5 baseline, SOC Alert Analyzer completed a comprehensive four
    - Exposed `monitoring_active: true` across both authenticated and sanitized demo views.
 5. **Zero Route Shadowing & Canonical Version Consistency**:
    - Consolidated all `/api/v1` routes under `app/api/routes.py`, removing duplicate shadowed route handlers.
-   - Synchronized canonical version metadata across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI.version` to `1.2.6`.
+   - Synchronized canonical version metadata across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI.version` to `1.2.7`.
 
-### Final Test Suite & Quality Verification (v1.2.6)
+### Final Test Suite & Quality Verification (v1.2.7)
 - **Total Automated Pytest Tests**: **230 passed, 0 failed (100% pass rate in 22.78s)**
 - **Test Coverage**: **86% on Linux / 88% on Windows** (exceeding enforced CI floor of 85%)
 - **Static Code Analysis (Flake8)**: 0 errors (`E9,F63,F7,F82`)
 - **AST Application Security Testing (Bandit)**: 0 High/Medium issues
 - **Dependency Security Audit (Pip-Audit)**: 0 known vulnerabilities
-- **GitHub Actions CI Matrix (Run 39491492052)**: 100% SUCCESS across all 7 matrix jobs (Ubuntu & Windows on Python 3.11, 3.12, 3.13 + Security Audit)
+- **GitHub Actions CI Matrix (Run 39494517856)**: 100% SUCCESS across all 7 matrix jobs (Ubuntu & Windows on Python 3.11, 3.12, 3.13 + Security Audit)
 
-### Hardened Standalone Windows Executable Build (`v1.2.6`)
-- **Official Build Workflow**: `.github/workflows/release-exe.yml` on `windows-2022` runner (Run ID: `39491519878`)
+### Hardened Standalone Windows Executable Build (`v1.2.7`)
+- **Official Build Workflow**: `.github/workflows/release-exe.yml` on `windows-2022` runner
 - **Artifact Path**: `dist/SOC_Alert_Analyzer.exe`
 - **Architecture**: Windows x86_64
-- **Size**: 26,543,857 bytes (~25.3 MB with UPX compression)
-- **SHA-256 Digest**: `722a33735a61fb613cb67225f679bfd61b19a2518baacf556c4d532c97edba1c`
+- **Size**: ~26.5 MB with UPX compression
 - **Dual Checksum Verification**: Verified identically via CertUtil, Python `hashlib`, and `scripts/verify_release_checksum.py`
-- **Live Smoke-Test Suite**: 100% passed (CLI `--help`, web dashboard `GET /`, bundled static CSS/JS, unauthenticated VIEWER RBAC, host sensor `monitoring_active=True`, OpenAPI `1.2.6`, authenticated ANALYST API key, sample Wazuh data loader, SQLite DB persistence, and dashboard stats telemetry isolation)
+- **Live Smoke-Test Suite**: 100% passed (CLI `--help`, web dashboard `GET /`, bundled static CSS/JS, unauthenticated VIEWER RBAC, host sensor `monitoring_active=True`, OpenAPI `1.2.7`, authenticated ANALYST API key, sample Wazuh data loader, SQLite DB persistence, and dashboard stats telemetry isolation)
 
 
 
