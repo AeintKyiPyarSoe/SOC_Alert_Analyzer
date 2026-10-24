@@ -809,7 +809,7 @@ class HostSecuritySensor:
 
         return events
 
-    def _ingest_events(self, raw_events: List[Dict[str, Any]], db: Session) -> List[Alert]:
+    def _ingest_events(self, raw_events: List[Dict[str, Any]], db: Session, check_active: bool = False) -> List[Alert]:
         """Deduplicates, normalizes, persists security alerts, and triggers correlation."""
         created_alerts = []
         for raw in raw_events:
@@ -887,6 +887,13 @@ class HostSecuritySensor:
             db.flush()
             created_alerts.append(alert)
 
+        if check_active:
+            from app.security.stream import stream_manager
+            if not stream_manager.host_monitoring_active:
+                logger.info("Host monitoring was paused during audit; discarding in-flight findings and rolling back.")
+                db.rollback()
+                return []
+
         if created_alerts:
             db.commit()
             IncidentCorrelator.correlate_alerts(db)
@@ -895,15 +902,15 @@ class HostSecuritySensor:
 
         return created_alerts
 
-    def run_fast_audit(self, db: Session) -> List[Alert]:
+    def run_fast_audit(self, db: Session, check_active: bool = False) -> List[Alert]:
         """Runs fast, sub-second differential checks on new processes, active sockets, and startup folder."""
         raw_events = []
         raw_events.extend(self.audit_new_processes())
         raw_events.extend(self.audit_network_sockets())
         raw_events.extend(self.audit_startup_folder())
-        return self._ingest_events(raw_events, db)
+        return self._ingest_events(raw_events, db, check_active=check_active)
 
-    def run_full_audit(self, db: Session) -> List[Alert]:
+    def run_full_audit(self, db: Session, check_active: bool = False) -> List[Alert]:
         """Runs all live host security audits, normalizes findings, commits to DB, and correlates."""
         raw_events = []
         raw_events.extend(self.audit_processes())
@@ -911,7 +918,7 @@ class HostSecuritySensor:
         raw_events.extend(self.audit_startup_folder())
         raw_events.extend(self.audit_firewall_posture())
         raw_events.extend(self.audit_event_logs())
-        return self._ingest_events(raw_events, db)
+        return self._ingest_events(raw_events, db, check_active=check_active)
 
     def run_test_drill(self, db: Session) -> Dict[str, Any]:
         """
@@ -1011,12 +1018,16 @@ async def real_host_monitor_loop():
                 db = SessionLocal()
                 try:
                     if not initial_full_done or (tick % 10 == 0):
-                        new_alerts = host_sensor.run_full_audit(db)
+                        new_alerts = host_sensor.run_full_audit(db, check_active=True)
                         initial_full_done = True
                     else:
-                        new_alerts = host_sensor.run_fast_audit(db)
+                        new_alerts = host_sensor.run_fast_audit(db, check_active=True)
 
-                    if new_alerts:
+                    if not stream_manager.host_monitoring_active:
+                        logger.info("Host monitoring was paused during audit cycle; discarding in-flight alerts.")
+                        db.rollback()
+                        new_alerts = []
+                    elif new_alerts:
                         new_incidents = IncidentCorrelator.correlate_alerts(db)
 
                         # Efficient SQL-level KPI aggregation

@@ -27,10 +27,10 @@
             <div class="header-right">
                 <!-- Host EDR Live Sensor Status Pill -->
                 {% set _curr_stream = get_stream_status() if get_stream_status is defined else None %}
-                {% set _host_active = _curr_stream.host_monitoring_active if _curr_stream else True %}
-                <div class="live-sensor-pill {% if not _host_active %}paused{% else %}active{% endif %}" id="live-sensor-pill" title="{% if not _host_active %}Native Host Security Sensor: PAUSED (Historical data preserved){% else %}Native Host Security Sensor & Live Telemetry: ACTIVE{% endif %}">
-                    <span class="pulse-dot {% if not _host_active %}paused{% endif %}"></span>
-                    <span id="live-sensor-text">{% if not _host_active %}HOST SENSOR: PAUSED{% else %}HOST SENSOR: ACTIVE{% endif %}</span>
+                {% set _host_active = _curr_stream.host_monitoring_active if _curr_stream else None %}
+                <div class="live-sensor-pill {% if _host_active is true %}active{% elif _host_active is false %}paused{% else %}checking{% endif %}" id="live-sensor-pill" title="{% if _host_active is true %}Native Host Security Sensor & Live Telemetry: ACTIVE{% elif _host_active is false %}Native Host Security Sensor: PAUSED (Historical data preserved){% else %}Native Host Security Sensor: Checking status...{% endif %}">
+                    <span class="pulse-dot {% if _host_active is true %}active{% elif _host_active is false %}paused{% else %}checking{% endif %}"></span>
+                    <span id="live-sensor-text">{% if _host_active is true %}HOST SENSOR: ACTIVE{% elif _host_active is false %}HOST SENSOR: PAUSED{% else %}HOST SENSOR: CHECKING{% endif %}</span>
                 </div>
 
                 <!-- Navigation Links -->

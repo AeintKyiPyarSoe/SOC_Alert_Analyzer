@@ -16,32 +16,32 @@ def test_monitoring_stream_manager_idempotency_and_lifecycle():
         assert mgr.active_connections == {}
 
         # 1. Starting host monitoring is idempotent
-        assert mgr.start_host_monitoring() is True
+        assert (await mgr.start_host_monitoring()) is True
         assert mgr.host_monitoring_active is True
-        assert mgr.start_host_monitoring() is True
+        assert (await mgr.start_host_monitoring()) is True
         assert mgr.host_monitoring_active is True
 
         # 2. Stopping host monitoring is idempotent
-        assert mgr.stop_host_monitoring() is False
+        assert (await mgr.stop_host_monitoring()) is False
         assert mgr.host_monitoring_active is False
-        assert mgr.stop_host_monitoring() is False
+        assert (await mgr.stop_host_monitoring()) is False
         assert mgr.host_monitoring_active is False
 
         # 3. Starting simulation is idempotent
-        assert mgr.start_simulation() is True
+        assert (await mgr.start_simulation()) is True
         assert mgr.simulation_active is True
-        assert mgr.start_simulation() is True
+        assert (await mgr.start_simulation()) is True
         assert mgr.simulation_active is True
 
         # 4. Stopping simulation is idempotent
-        assert mgr.stop_simulation() is False
+        assert (await mgr.stop_simulation()) is False
         assert mgr.simulation_active is False
-        assert mgr.stop_simulation() is False
+        assert (await mgr.stop_simulation()) is False
         assert mgr.simulation_active is False
 
         # 5. Clean shutdown
-        mgr.start_host_monitoring()
-        mgr.start_simulation()
+        await mgr.start_host_monitoring()
+        await mgr.start_simulation()
         assert mgr.host_monitoring_active is True
         assert mgr.simulation_active is True
         await mgr.shutdown()
@@ -222,3 +222,35 @@ def test_initial_host_baseline_skipped_when_paused(monkeypatch):
     finally:
         stream_manager.host_monitoring_active = True
 
+
+
+def test_preference_persistence_failure_handling(tmp_path, monkeypatch):
+    """Verify explicit error reporting when saving preferences fails (Issue 4)."""
+    import os
+    import pytest
+    from app.config import save_monitoring_preferences, load_monitoring_preferences
+
+    # 1. Successful baseline save
+    res1 = save_monitoring_preferences(host_monitoring=True, simulation=False, data_dir=tmp_path)
+    assert res1["persisted"] is True
+    assert res1["persistence_error"] is None
+
+    # 2. Simulate write failure (e.g. read-only or permission error)
+    def fail_replace(src, dst):
+        raise PermissionError("Mocked access denied")
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    res2 = save_monitoring_preferences(host_monitoring=False, simulation=True, data_dir=tmp_path)
+    assert res2["persisted"] is False
+    assert "Mocked access denied" in res2["persistence_error"]
+
+    # Existing file on disk should remain intact with previous valid state
+    monkeypatch.undo()
+    loaded = load_monitoring_preferences(data_dir=tmp_path)
+    assert loaded["host_monitoring_active"] is True
+    assert loaded["simulation_active"] is False
+
+    # 3. Test raise_on_error=True
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(PermissionError):
+        save_monitoring_preferences(host_monitoring=False, simulation=True, data_dir=tmp_path, raise_on_error=True)

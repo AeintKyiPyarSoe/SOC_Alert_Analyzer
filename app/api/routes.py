@@ -631,9 +631,9 @@ async def toggle_host_monitor(
 ):
     """Enable or pause genuine host security monitoring. Requires ANALYST or ADMIN role."""
     if active:
-        stream_manager.start_host_monitoring()
+        await stream_manager.start_host_monitoring()
     else:
-        stream_manager.stop_host_monitoring()
+        await stream_manager.stop_host_monitoring()
     status = stream_manager.get_status()
     return {
         "status": "success",
@@ -647,9 +647,9 @@ async def toggle_simulation(
 ):
     """Enable or pause synthetic demonstration threat simulation. Requires ANALYST or ADMIN role."""
     if active:
-        stream_manager.start_simulation()
+        await stream_manager.start_simulation()
     else:
-        stream_manager.stop_simulation()
+        await stream_manager.stop_simulation()
     status = stream_manager.get_status()
     return {
         "status": "success",
@@ -663,9 +663,9 @@ async def toggle_stream_backward_compat(
 ):
     """Backward-compatible toggle controlling synthetic threat simulation. Requires ANALYST or ADMIN role."""
     if active:
-        stream_manager.start_simulation()
+        await stream_manager.start_simulation()
     else:
-        stream_manager.stop_simulation()
+        await stream_manager.stop_simulation()
     status = stream_manager.get_status()
     return {
         "status": "success",
