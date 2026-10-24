@@ -358,8 +358,8 @@ Version 1.2.10 addresses critical verification, detection evaluation integrity, 
 - **Overall Code Coverage**: **88%** (3,664 statements evaluated, exceeding 85% CI floor)
 - **Realistic Endpoint Telemetry Benchmark**: 18 scenarios (12 malicious, 6 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives, 100% MITRE Technique Match Accuracy**
 - **Behavioral Process Benchmark**: 50 scenarios (25 malicious, 25 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives**
-- **Standalone Windows Executable**: 54,101,860 bytes verified with live HTTP API smoke test (`/api/v1/auth/me`)
-- **Authoritative Release Checksum**: `a01a3d1700091e705b80961142e6bdfb518f8c56599e97339db73eb2cde315eb`
+- **Standalone Windows Executable**: 26,591,239 bytes (official CI runner) / 54,101,860 bytes (local build), verified with live HTTP API smoke test (`/api/v1/auth/me`)
+- **Authoritative Release Checksum**: `5d64ddf4f6ea5c7f021973a6eccbe6bb7ba7f3b62f551abad1b0fe4aa2490a84` (runner release asset) / `a01a3d1700091e705b80961142e6bdfb518f8c56599e97339db73eb2cde315eb` (local build)
 - **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, clean pip-audit (0 vulnerabilities)
 
 

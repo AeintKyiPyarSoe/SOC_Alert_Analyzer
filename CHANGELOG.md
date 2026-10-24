@@ -39,8 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test Suite Expansion & Coverage**: Expanded automated pytest suite from 275 to **292 passed (100%)** with **88% overall code coverage** (87.69%).
 - **Documentation Link Cleanup**: Removed all Windows local filesystem `file:///C:/...` links from `README.md` and `docs/requirements_specification.md`, replacing them with relative repository links.
 - **Windows Event Parser Contextualization**: Added command-line enrichment to Event 4688 descriptions and interactive console logon detection for Event 4624 (`LogonType: 2`).
-- **Standalone Windows Executable Rebuild**: Rebuilt `dist/SOC_Alert_Analyzer.exe` (54,101,860 bytes) with bundled sample datasets and verified runtime smoke tests on `/api/v1/auth/me`.
-- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `a01a3d1700091e705b80961142e6bdfb518f8c56599e97339db73eb2cde315eb`.
+- **Standalone Windows Executable Rebuild**: Rebuilt `dist/SOC_Alert_Analyzer.exe` (26,591,239 bytes on official GitHub Actions Windows Server 2022 / Python 3.12 runner; 54,101,860 bytes local Python 3.13) with bundled sample datasets and verified runtime smoke tests on `/api/v1/auth/me`.
+- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `5d64ddf4f6ea5c7f021973a6eccbe6bb7ba7f3b62f551abad1b0fe4aa2490a84`.
 
 ---
 
