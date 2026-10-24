@@ -287,12 +287,12 @@ Building directly upon the v1.2.7 release, SOC Alert Analyzer v1.2.8 introduced 
 
 ---
 
-### Standalone Executable Compilation (`v1.2.8`)
-- **Build Tool**: PyInstaller 6.13.0 with Python 3.12.9 (Windows x86_64)
+### Standalone Executable Compilation & Official Release (`v1.2.8`)
+- **Official Build Workflow**: `.github/workflows/release-exe.yml` on `windows-latest` (Windows Server 2025)
 - **Bundled Assets**: Added `sample_alerts` data tree to `SOC_Alert_Analyzer.spec`.
 - **Executable Location**: `dist/SOC_Alert_Analyzer.exe`
-- **Binary Size**: 54,090,201 bytes (~51.5 MB uncompressed standalone executable)
-- **SHA-256 Digest**: `7fa6f844b6c16aa697c3d5a190c019387242fb3b8dd315ad1072af46230d56d3`
-- **Verification Record**: Recorded in `dist/SHA256SUMS.txt` and verified via `scripts/verify_release_checksum.py`.
-- **Live Smoke Test**: Binary executed successfully in isolation; verified `--help`, `/` root route, authentication flows, `/reports/mitre` UI, and sample alert ingestion.
+- **Binary Size**: 26,576,796 bytes (~25.3 MB with UPX compression; 54,090,201 bytes uncompressed local baseline)
+- **SHA-256 Digest**: `8d5838dbb07f9bcddff59c1ecc36bdd503ce8aec87a382eab5460f19e9b9ab1b`
+- **Release Verification**: Recorded in `dist/SHA256SUMS.txt` and published to GitHub Release `v1.2.8`.
+- **Live Smoke Test**: Binary executed successfully in isolation and GitHub Actions CI; verified `--help`, `/` root route, `/api/v1/auth/me` healthcheck, `/reports/mitre` UI, and sample alert ingestion.
 

@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Canonical Version Synchronization**: Bumped package version across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` application metadata to `v1.2.8`.
 - **Test Suite Expansion**: Expanded automated test suite from 230 to **237 passing tests** (100% pass rate).
-- **Standalone Windows Executable Rebuild**: Compiled updated standalone executable `dist/SOC_Alert_Analyzer.exe` (54,090,201 bytes) with bundled `sample_alerts/` and verified runtime HTTP smoke tests on Windows loopback interface.
-- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `7fa6f844b6c16aa697c3d5a190c019387242fb3b8dd315ad1072af46230d56d3`.
+- **Standalone Windows Executable Rebuild**: Compiled updated standalone executable `dist/SOC_Alert_Analyzer.exe` (26,576,796 bytes with UPX compression) with bundled `sample_alerts/` and verified runtime HTTP smoke tests on Windows loopback interface.
+- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `8d5838dbb07f9bcddff59c1ecc36bdd503ce8aec87a382eab5460f19e9b9ab1b`.
 
 ---
 
