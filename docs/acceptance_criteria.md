@@ -334,6 +334,13 @@ Each feature includes:
 - **When** verified against dependency standards,
 - **Then** valid `requirements.lock`, CycloneDX v1.5 `sbom.json`, and SPDX v2.3 `sbom.spdx.json` are present and verified.
 
+##### Scenario 9.7: Host Sensor Lifecycle, Synchronized Indicators & Persistent State
+- **Given** the host security sensor is paused by the analyst,
+- **When** viewing the UI across all indicators (header pill, pulsing dot, toolbar toggle buttons, data notice strip, host telemetry EDR label),
+- **Then** all indicators immediately reflect `PAUSED` without hardcoded overrides from WebSocket connections or page reloads,
+- **And** the paused preference is atomically persisted to `DATA_DIR/monitoring_preferences.json` and hydrated across restarts,
+- **And** historical alerts are preserved while background audits and SMB port 445 alert recreation remain disabled while paused.
+
 #### Verification Checklist
 - [x] `docker-compose.yml` launches both database and web application services.
 - [x] Database automatically runs migrations/tables on initial startup.
@@ -342,6 +349,9 @@ Each feature includes:
 - [x] Socket reachability engine assesses interface routability and firewall state.
 - [x] Sysmon and Windows Event logs evaluated across 18 benchmark scenarios.
 - [x] CycloneDX v1.5 and SPDX v2.3 SBOMs generated and verified.
+- [x] Host sensor pause/resume lifecycle decoupled from WebSocket and synchronized across all UI indicators.
+- [x] Atomic monitoring preference persistence verified across restarts in `tests/test_monitoring_lifecycle.py`.
+- [x] Guarded baseline audits ensure SMB port 445 alerts are not recreated when clearing history while paused.
 
 ---
 
