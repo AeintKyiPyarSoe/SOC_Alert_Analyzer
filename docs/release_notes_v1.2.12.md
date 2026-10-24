@@ -2,8 +2,8 @@
 
 **Release Tag:** [v1.2.12](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases/tag/v1.2.12)  
 **Release Date:** October 25, 2026  
-**Authoritative Binary SHA-256:** `c902ac6f4d44eea802511f77a65bea968c5a4fb3557a2e9fb3af6e91d9879d27`  
-**Standalone EXE Size:** 54,110,131 bytes  
+**Authoritative Binary SHA-256 (GitHub Actions Runner):** `28f566b62b6e8711282920225b26a51a0c80fa50e82694c0165def8417424ed9`  
+**Standalone EXE Size (Runner):** 24,895,523 bytes (Windows Server 2022 / Python 3.12)  
 **Test Suite Status:** 301 passed (100% passing rate, 86.65% code coverage, ≥85% CI floor)  
 **Security Scans:** Bandit AST SAST (0 issues), Flake8 (0 errors), Ruff (0 issues), Pip-Audit (0 vulnerabilities)  
 **Detection & Telemetry Benchmarks:** 100% Precision, 100% Recall, 100% F1, 0.0% FPR across 50 detection & 18 endpoint attack evaluation scenarios  
@@ -49,10 +49,17 @@
 ---
 
 ### 🔐 Verified Release Artifacts & SHA-256 Checksums
+#### Official GitHub Release Asset (Windows Server 2022 / Python 3.12 runner)
+```text
+28f566b62b6e8711282920225b26a51a0c80fa50e82694c0165def8417424ed9  SOC_Alert_Analyzer.exe
+```
+* **Official Binary Size**: 24,895,523 bytes
+
+#### Local Developer Build (Windows 11 / Python 3.13)
 ```text
 c902ac6f4d44eea802511f77a65bea968c5a4fb3557a2e9fb3af6e91d9879d27  SOC_Alert_Analyzer.exe
 ```
-* **Binary Size**: 54,110,131 bytes
+* **Local Binary Size**: 54,110,131 bytes
 * **Local SHA-256 Verification**:
   ```powershell
   Get-FileHash -Algorithm SHA256 dist\SOC_Alert_Analyzer.exe

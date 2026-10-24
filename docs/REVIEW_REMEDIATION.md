@@ -401,6 +401,6 @@ Version 1.2.12 achieves complete end-to-end reliability for real-world host moni
 - **Overall Code Coverage**: **86.65%** (3,814 statements evaluated, exceeding 85% CI floor)
 - **Realistic Endpoint Telemetry Benchmark**: 18 scenarios (12 malicious, 6 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives, 100% MITRE Technique Match Accuracy**
 - **Empirical Detection Evaluation Benchmark**: 50 scenarios (25 malicious, 25 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives**
-- **Standalone Windows Executable**: 54,110,131 bytes, verified across process restarts with `scripts/test_exe_lifecycle_integration.py` (Tests A through G passing)
-- **Authoritative Release Checksum**: `c902ac6f4d44eea802511f77a65bea968c5a4fb3557a2e9fb3af6e91d9879d27`
+- **Standalone Windows Executable**: 24,895,523 bytes (GitHub Actions runner) / 54,110,131 bytes (local build), verified across process restarts with `scripts/test_exe_lifecycle_integration.py` (Tests A through G passing)
+- **Authoritative Release Checksum**: `28f566b62b6e8711282920225b26a51a0c80fa50e82694c0165def8417424ed9` (GitHub Actions runner) / `c902ac6f4d44eea802511f77a65bea968c5a4fb3557a2e9fb3af6e91d9879d27` (local build)
 - **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, clean pip-audit (0 vulnerabilities)
