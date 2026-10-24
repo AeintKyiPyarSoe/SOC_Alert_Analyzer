@@ -452,6 +452,6 @@ Version 1.2.13 addresses WebSocket transport failures in frozen PyInstaller pack
 - **Playwright Browser Tests**: **10 passed, 0 failed (100% passing rate)**
 - **Executable WebSocket Integration (Tests A–J)**: **10 passed, 0 failed (100% passing rate)**
 - **Executable Lifecycle Integration (Tests A–G)**: **7 passed, 0 failed (100% passing rate)**
-- **Standalone Windows Executable**: 54,113,978 bytes (local build)
-- **Authoritative Release Checksum**: `6e7a6537144d5649f0a2de93ee3736282bde23934341683538b0d37c8bb0da11` (local build)
+- **Standalone Windows Executable**: 25,259,740 bytes (GitHub Actions runner) / 54,113,978 bytes (local build)
+- **Authoritative Release Checksum**: `67a7072ed8b69a9f01003128c5f265d2e730e3a178bdbe9b8e8102f4cdf63bf5` (GitHub Actions runner) / `6e7a6537144d5649f0a2de93ee3736282bde23934341683538b0d37c8bb0da11` (local build)
 - **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, 0 Pip-Audit vulnerabilities
