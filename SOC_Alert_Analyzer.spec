@@ -8,6 +8,7 @@ datas = [
     ('app/templates', 'app/templates'),
     ('app/static', 'app/static'),
     ('sample_data', 'sample_data'),
+    ('sample_alerts', 'sample_alerts'),
 ]
 
 hiddenimports = [

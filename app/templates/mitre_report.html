@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}MITRE ATT&CK Matrix & Threat Summary{% endblock %}
+
+{% block content %}
+<div class="container-wide" style="max-width: 1440px; margin: 0 auto; padding: 1.5rem 1rem;">
+    <!-- Hero / Header Section -->
+    <section class="hero-section" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+        <div class="hero-content" style="max-width: 750px;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                <span style="background: var(--mitre-tag); border: 1px solid var(--mitre-border); color: var(--mitre-text); font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
+                    MITRE ATT&CK® Enterprise v14
+                </span>
+                <span style="font-size: 0.75rem; color: var(--text-faint);">Automated Tactic & Technique Attribution</span>
+            </div>
+            <h1 class="hero-title" style="font-size: 1.6rem; margin-bottom: 0.4rem;">MITRE ATT&CK Threat Mapping & Matrix</h1>
+            <p class="hero-subtitle" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+                Real-time defensive visualization mapping all ingested security telemetry and host detections to adversary tactics, techniques, and prioritized mitigations.
+            </p>
+        </div>
+        <div class="hero-actions" style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+            <a href="/api/v1/reports/mitre?format=markdown&download=true" class="btn btn-outline btn-sm" download title="Download full Markdown report">
+                📥 Download Report (.md)
+            </a>
+            <a href="/api/v1/reports/mitre?format=json&download=true" class="btn btn-secondary btn-sm" download title="Export structured JSON threat summary">
+                💾 Export JSON
+            </a>
+            <a href="/upload" class="btn btn-primary btn-sm" title="Upload additional SIEM telemetry logs">
+                ➕ Ingest Telemetry
+            </a>
+        </div>
+    </section>
+
+    <!-- Top KPI Executive Metrics Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <!-- Total Alerts Evaluated -->
+        <div class="detail-section-card" style="padding: 1rem 1.25rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">
+                Evaluated Alerts
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 700; color: var(--text-main);">
+                {{ summary.total_alerts }}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                {{ summary.mapped_alerts }} mapped to ATT&CK
+            </div>
+        </div>
+
+        <!-- MITRE Coverage Rate -->
+        <div class="detail-section-card" style="padding: 1rem 1.25rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">
+                ATT&CK Coverage
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 700; color: var(--accent-mint);">
+                {{ summary.coverage_percentage }}%
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Attributed security telemetry
+            </div>
+        </div>
+
+        <!-- Distinct Tactics Triggered -->
+        <div class="detail-section-card" style="padding: 1rem 1.25rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">
+                Active Tactics
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 700; color: var(--mitre-text);">
+                {{ summary.tactics_count }} <span style="font-size: 0.9rem; font-weight: 400; color: var(--text-muted);">/ 14</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Adversary kill-chain stages
+            </div>
+        </div>
+
+        <!-- Distinct Techniques Observed -->
+        <div class="detail-section-card" style="padding: 1rem 1.25rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">
+                Observed Techniques
+            </div>
+            <div style="font-size: 1.8rem; font-weight: 700; color: var(--color-high);">
+                {{ summary.techniques_count }}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Individual MITRE techniques
+            </div>
+        </div>
+
+        <!-- Peak Threat Severity -->
+        <div class="detail-section-card" style="padding: 1rem 1.25rem;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.35rem;">
+                Peak Severity
+            </div>
+            <div style="font-size: 1.5rem; font-weight: 700; margin-top: 0.2rem;
+                color: {% if summary.highest_severity == 'CRITICAL' %}var(--color-critical){% elif summary.highest_severity == 'HIGH' %}var(--color-high){% elif summary.highest_severity == 'MEDIUM' %}var(--color-medium){% else %}var(--color-low){% endif %};">
+                {{ summary.highest_severity }}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                Maximum escalation level
+            </div>
+        </div>
+    </div>
+
+    <!-- ATT&CK Matrix Navigator Grid (Heatmap Visualization) -->
+    <section class="detail-section-card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+                <h3 style="font-size: 1rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.2rem;">
+                    🗺️ Enterprise ATT&CK Navigator Matrix Heatmap
+                </h3>
+                <p style="font-size: 0.78rem; color: var(--text-muted);">
+                    Tactics organized sequentially along the attack kill chain. Highlighted columns indicate detected threat activity.
+                </p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; font-size: 0.72rem; align-items: center;">
+                <span style="color: var(--text-faint);">Severity Key:</span>
+                <span style="background: var(--color-critical-bg); border: 1px solid var(--color-critical-border); color: var(--color-critical); padding: 0.15rem 0.4rem; border-radius: 3px;">Critical</span>
+                <span style="background: var(--color-high-bg); border: 1px solid var(--color-high-border); color: var(--color-high); padding: 0.15rem 0.4rem; border-radius: 3px;">High</span>
+                <span style="background: var(--color-medium-bg); border: 1px solid var(--color-medium-border); color: var(--color-medium); padding: 0.15rem 0.4rem; border-radius: 3px;">Medium</span>
+                <span style="background: var(--color-low-bg); border: 1px solid var(--color-low-border); color: var(--color-low); padding: 0.15rem 0.4rem; border-radius: 3px;">Low</span>
+            </div>
+        </div>
+
+        <!-- Horizontal scrollable matrix table -->
+        <div style="overflow-x: auto; padding-bottom: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem; min-width: 1200px;">
+                {% for col in summary.matrix_grid %}
+                <div style="flex: 1; min-width: 140px; background: {% if col.is_active %}rgba(208, 188, 255, 0.05){% else %}var(--bg-input){% endif %}; border: 1px solid {% if col.is_active %}var(--mitre-border){% else %}var(--border-subtle){% endif %}; border-radius: var(--radius-control); display: flex; flex-direction: column;">
+                    <!-- Column Header -->
+                    <div style="padding: 0.6rem 0.5rem; border-bottom: 1px solid {% if col.is_active %}var(--mitre-border){% else %}var(--border-subtle){% endif %}; background: {% if col.is_active %}var(--mitre-bg){% else %}transparent{% endif %};">
+                        <div style="font-size: 0.65rem; color: var(--text-faint); font-weight: 600;">{{ col.tactic_id }}</div>
+                        <div style="font-size: 0.75rem; font-weight: 700; color: {% if col.is_active %}var(--mitre-text){% else %}var(--text-muted){% endif %}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ col.tactic }}">
+                            {{ col.tactic }}
+                        </div>
+                        <div style="margin-top: 0.25rem;">
+                            {% if col.is_active %}
+                            <span style="font-size: 0.68rem; font-weight: 700; background: rgba(160, 237, 197, 0.15); color: var(--accent-mint); padding: 0.1rem 0.35rem; border-radius: 3px;">
+                                {{ col.alert_count }} alert{% if col.alert_count > 1 %}s{% endif %}
+                            </span>
+                            {% else %}
+                            <span style="font-size: 0.65rem; color: var(--text-faint);">0 alerts</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Column Cells (Observed Techniques) -->
+                    <div style="padding: 0.4rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1;">
+                        {% if col.techniques %}
+                            {% for tech in col.techniques %}
+                            <div style="padding: 0.45rem; border-radius: 4px; font-size: 0.7rem; display: flex; flex-direction: column; gap: 0.2rem;
+                                background: {% if tech.highest_severity == 'CRITICAL' %}var(--color-critical-bg){% elif tech.highest_severity == 'HIGH' %}var(--color-high-bg){% elif tech.highest_severity == 'MEDIUM' %}var(--color-medium-bg){% else %}var(--color-low-bg){% endif %};
+                                border: 1px solid {% if tech.highest_severity == 'CRITICAL' %}var(--color-critical-border){% elif tech.highest_severity == 'HIGH' %}var(--color-high-border){% elif tech.highest_severity == 'MEDIUM' %}var(--color-medium-border){% else %}var(--color-low-border){% endif %};">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <a href="{{ tech.url }}" target="_blank" rel="noopener noreferrer" style="font-weight: 700; font-family: var(--font-mono); color: var(--text-main); text-decoration: none;" title="Open MITRE documentation for {{ tech.id }}">
+                                        {{ tech.id }} ↗
+                                    </a>
+                                    <span style="font-size: 0.62rem; font-weight: 700; color: var(--text-main); background: rgba(0,0,0,0.3); padding: 0.05rem 0.25rem; border-radius: 2px;">
+                                        ×{{ tech.alert_count }}
+                                    </span>
+                                </div>
+                                <div style="color: var(--text-main); font-weight: 500; line-height: 1.2;" title="{{ tech.name }}">
+                                    {{ tech.name }}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div style="font-size: 0.68rem; color: var(--text-faint); font-style: italic; text-align: center; padding: 1rem 0;">
+                                No detections
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Detailed Tactics Breakdown Table & Telemetry Evidence -->
+    <section class="detail-section-card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+        <h3 style="font-size: 1rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.35rem;">
+            📋 Tactic Breakdown & Defensive Countermeasures
+        </h3>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+            Detailed attribution breakdown and defensive playbooks for all observed tactics:
+        </p>
+
+        {% if summary.tactics %}
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                {% for t in summary.tactics %}
+                <div style="border: 1px solid var(--border-color); border-radius: var(--radius-control); padding: 1rem; background: var(--bg-surface-secondary);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <div>
+                            <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--mitre-text); background: var(--mitre-tag); padding: 0.15rem 0.4rem; border-radius: 3px; font-weight: 700;">
+                                {{ t.tactic_id }}
+                            </span>
+                            <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin-left: 0.4rem;">
+                                {{ t.tactic }}
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">
+                                <strong>{{ t.alert_count }}</strong> alerts ({{ t.percentage_of_mapped }}% share)
+                            </span>
+                            <span style="font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 3px;
+                                background: {% if t.highest_severity == 'CRITICAL' %}var(--color-critical-bg){% elif t.highest_severity == 'HIGH' %}var(--color-high-bg){% elif t.highest_severity == 'MEDIUM' %}var(--color-medium-bg){% else %}var(--color-low-bg){% endif %};
+                                color: {% if t.highest_severity == 'CRITICAL' %}var(--color-critical){% elif t.highest_severity == 'HIGH' %}var(--color-high){% elif t.highest_severity == 'MEDIUM' %}var(--color-medium){% else %}var(--color-low){% endif %};">
+                                {{ t.highest_severity }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.75rem; font-style: italic;">
+                        {{ t.description }}
+                    </p>
+
+                    <!-- Techniques Grid -->
+                    <div style="margin-bottom: 0.75rem;">
+                        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.4rem;">
+                            Observed Techniques:
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.5rem;">
+                            {% for tech in t.techniques %}
+                            <div style="padding: 0.6rem; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border-subtle);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <a href="{{ tech.url }}" target="_blank" rel="noopener noreferrer" style="font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700; color: var(--accent-mint); text-decoration: none;">
+                                        {{ tech.id }} — {{ tech.name }} ↗
+                                    </a>
+                                    <span style="font-size: 0.68rem; font-weight: 600; color: var(--text-muted);">
+                                        {{ tech.alert_count }} alert{% if tech.alert_count > 1 %}s{% endif %}
+                                    </span>
+                                </div>
+                                <p style="font-size: 0.73rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 0.35rem;">
+                                    {{ tech.description }}
+                                </p>
+                                {% if tech.affected_entities %}
+                                <div style="font-size: 0.68rem; color: var(--text-faint);">
+                                    Assets: <span style="font-family: var(--font-mono); color: var(--text-main);">{{ tech.affected_entities|join(', ') }}</span>
+                                </div>
+                                {% endif %}
+                                {% if tech.sample_alerts %}
+                                <div style="font-size: 0.68rem; color: var(--text-faint); margin-top: 0.2rem; font-style: italic;">
+                                    Example: "{{ tech.sample_alerts[0] }}"
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Recommended Remediation Box -->
+                    <div style="padding: 0.6rem 0.75rem; border-radius: 4px; background: var(--accent-mint-dim); border: 1px solid rgba(160, 237, 197, 0.25); display: flex; align-items: flex-start; gap: 0.5rem;">
+                        <span style="font-size: 0.9rem;">🛡️</span>
+                        <div>
+                            <span style="font-size: 0.72rem; font-weight: 700; color: var(--accent-mint); text-transform: uppercase;">
+                                Recommended Countermeasure:
+                            </span>
+                            <div style="font-size: 0.78rem; color: var(--text-main); margin-top: 0.15rem; line-height: 1.4;">
+                                {{ t.recommendation }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🛡️</div>
+                <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.25rem;">
+                    No MITRE ATT&CK Mappings Found
+                </div>
+                <p style="font-size: 0.8rem; max-width: 480px; margin: 0 auto 1rem auto;">
+                    Ingest mock SIEM logs from the <code>sample_alerts/</code> directory or run a host security audit to populate the matrix.
+                </p>
+                <a href="/upload" class="btn btn-primary btn-sm">Import Sample SIEM Telemetry</a>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

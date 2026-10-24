@@ -74,23 +74,41 @@
     <!-- Curated Training Datasets -->
     <div class="detail-section-card">
         <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.35rem;">
-            ⚡ Curated Practice Datasets
+            ⚡ Curated Mock SIEM Practice Datasets (Zero API Keys Needed)
         </h3>
         <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.85rem;">
-            Quickly populate the database with benchmark attack scenarios:
+            Instantly populate the analyzer with mock SIEM exports from <code>sample_alerts/</code> to evaluate detection logic and MITRE ATT&CK coverage:
         </p>
 
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
             <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('wazuh')" style="text-align: left; padding: 0.85rem;">
                 <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🛡️</div>
-                <div style="color: var(--text-main); font-weight: 600;">Wazuh Alerts</div>
+                <div style="color: var(--text-main); font-weight: 600;">Wazuh SIEM</div>
                 <div style="font-size: 0.72rem; color: var(--text-faint);">SSH brute force & rootcheck</div>
             </button>
 
             <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('suricata')" style="text-align: left; padding: 0.85rem;">
                 <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🌐</div>
-                <div style="color: var(--text-main); font-weight: 600;">Suricata EVE</div>
-                <div style="font-size: 0.72rem; color: var(--text-faint);">Port scans & RCE exploit</div>
+                <div style="color: var(--text-main); font-weight: 600;">Suricata NIDS</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">Port scans & Struts RCE</div>
+            </button>
+
+            <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('windows')" style="text-align: left; padding: 0.85rem;">
+                <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🪟</div>
+                <div style="color: var(--text-main); font-weight: 600;">Windows Events</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">PowerShell, Mimikatz, Event 1102</div>
+            </button>
+
+            <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('web')" style="text-align: left; padding: 0.85rem;">
+                <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🕸️</div>
+                <div style="color: var(--text-main); font-weight: 600;">Web WAF Alerts</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">SQLi, Traversal, Web Shells</div>
+            </button>
+
+            <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('multi_stage')" style="text-align: left; padding: 0.85rem;">
+                <div style="font-size: 1.1rem; margin-bottom: 0.2rem;">🎯</div>
+                <div style="color: var(--text-main); font-weight: 600;">APT Campaign</div>
+                <div style="font-size: 0.72rem; color: var(--text-faint);">Full multi-stage kill-chain</div>
             </button>
 
             <button type="button" class="sample-choice-btn" onclick="loadSampleDataset('linux_auth')" style="text-align: left; padding: 0.85rem;">

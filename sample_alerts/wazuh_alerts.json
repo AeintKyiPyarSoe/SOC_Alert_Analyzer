@@ -1,0 +1,108 @@
+[
+  {
+    "timestamp": "2026-10-24T18:15:20.120+0000",
+    "rule": {
+      "level": 10,
+      "description": "sshd: Multiple failed SSH login attempts from same source",
+      "id": "5710",
+      "firedtimes": 28,
+      "groups": ["syslog", "sshd", "authentication_failed", "authentication_failures"]
+    },
+    "agent": {
+      "id": "002",
+      "name": "edge-dmz-host01",
+      "ip": "10.0.1.15"
+    },
+    "data": {
+      "srcip": "198.51.100.77",
+      "dstuser": "root",
+      "srcport": 49152
+    },
+    "full_log": "Oct 24 18:15:20 edge-dmz-host01 sshd[31042]: Failed password for root from 198.51.100.77 port 49152 ssh2"
+  },
+  {
+    "timestamp": "2026-10-24T18:16:05.340+0000",
+    "rule": {
+      "level": 10,
+      "description": "sshd: Failed authentication attempt",
+      "id": "5716",
+      "firedtimes": 4,
+      "groups": ["syslog", "sshd", "authentication_failed"]
+    },
+    "agent": {
+      "id": "002",
+      "name": "edge-dmz-host01",
+      "ip": "10.0.1.15"
+    },
+    "data": {
+      "srcip": "198.51.100.77",
+      "dstuser": "admin",
+      "srcport": 49158
+    },
+    "full_log": "Oct 24 18:16:05 edge-dmz-host01 sshd[31049]: Failed password for invalid user admin from 198.51.100.77 port 49158 ssh2"
+  },
+  {
+    "timestamp": "2026-10-24T18:18:12.800+0000",
+    "rule": {
+      "level": 8,
+      "description": "Integrity checksum changed for /etc/shadow",
+      "id": "550",
+      "firedtimes": 1,
+      "groups": ["ossec", "syscheck", "syscheck_integrity_changed"]
+    },
+    "agent": {
+      "id": "002",
+      "name": "edge-dmz-host01",
+      "ip": "10.0.1.15"
+    },
+    "data": {
+      "file": "/etc/shadow",
+      "size_before": "1248",
+      "size_after": "1312",
+      "md5_before": "e2fc714c4727ee9395f324cd2e7f331f",
+      "md5_after": "a3bb871d31a541602713f02495bbd69d"
+    },
+    "full_log": "File '/etc/shadow' checksum changed. File size changed from 1248 to 1312."
+  },
+  {
+    "timestamp": "2026-10-24T18:19:30.450+0000",
+    "rule": {
+      "level": 9,
+      "description": "sudo: successful sudo command execution for unprivileged user",
+      "id": "5402",
+      "firedtimes": 1,
+      "groups": ["syslog", "sudo"]
+    },
+    "agent": {
+      "id": "002",
+      "name": "edge-dmz-host01",
+      "ip": "10.0.1.15"
+    },
+    "data": {
+      "dstuser": "root",
+      "srcuser": "www-data",
+      "command": "/bin/bash -p"
+    },
+    "full_log": "Oct 24 18:19:30 edge-dmz-host01 sudo: www-data : TTY=pts/2 ; PWD=/tmp ; USER=root ; COMMAND=/bin/bash -p"
+  },
+  {
+    "timestamp": "2026-10-24T18:21:00.100+0000",
+    "rule": {
+      "level": 12,
+      "description": "Rootcheck: Trojan or malicious binary detected in /tmp directory",
+      "id": "510",
+      "firedtimes": 1,
+      "groups": ["ossec", "rootcheck"]
+    },
+    "agent": {
+      "id": "002",
+      "name": "edge-dmz-host01",
+      "ip": "10.0.1.15"
+    },
+    "data": {
+      "file": "/tmp/.kworker_masquerade",
+      "title": "Hidden masqueraded binary executing from volatile temp path"
+    },
+    "full_log": "Rootcheck: File '/tmp/.kworker_masquerade' is masquerading as kernel process but running from /tmp."
+  }
+]

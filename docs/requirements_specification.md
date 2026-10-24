@@ -105,6 +105,8 @@ SOC Alert Analyzer operates as a standalone web application comprised of a Pytho
   - The system SHALL parse standard `/var/log/auth.log` line entries using structured regex extraction for `sshd` failed passwords, accepted logins, invalid users, and sudo execution.
 - **FR-AIP-05: Validation & Error Handling**
   - The system SHALL reject malformed files, report specific line-level parsing warnings, and continue processing valid rows without crashing.
+- **FR-AIP-06: Mock SIEM Telemetry & Sample Alerts Directory**
+  - The system SHALL include a dedicated `sample_alerts/` directory containing realistic mock SIEM JSON exports (`wazuh_alerts.json`, `suricata_eve.json`, `windows_security_events.json`, `web_application_alerts.json`, `siem_multi_stage_incident.json`) allowing immediate offline evaluation, testing, and benchmark demonstration without requiring external SIEM connections or live API keys.
 
 ---
 
@@ -148,6 +150,8 @@ SOC Alert Analyzer operates as a standalone web application comprised of a Pytho
     | Account Password Guessing | `T1110.001` | Password Guessing | Credential Access |
 - **FR-MAM-02: Contextual Hyperlinking**
   - The system SHALL render clickable external references linking directly to the official MITRE ATT&CK knowledge base (e.g., `https://attack.mitre.org/techniques/T1110/`).
+- **FR-MAM-03: Automated Matrix Heatmap & Threat Summary Reporting**
+  - The system SHALL synthesize ingested telemetry into an interactive ATT&CK Enterprise Matrix Navigator covering all 14 standard tactics (TA0043 to TA0040), and generate automated threat summary reports accessible via Web UI (`/reports/mitre`), REST API (`/api/v1/reports/mitre`), and standalone CLI (`scripts/generate_mitre_report.py`) in Markdown, JSON, and ASCII formats.
 
 ---
 
@@ -239,3 +243,7 @@ SOC Alert Analyzer operates as a standalone web application comprised of a Pytho
 | `GET` | `/api/v1/incidents` | List correlated incidents | Query: `status`, `limit` | `200 OK` |
 | `GET` | `/api/v1/incidents/{id}` | Retrieve incident details & alerts | Path parameter: `id` | `200 OK` |
 | `GET` | `/api/v1/dashboard/stats` | Aggregated dashboard KPI numbers | None | `200 OK` |
+| `GET` | `/api/v1/reports/mitre` | Automated MITRE ATT&CK Threat Summary | Query: `format` (`json`, `markdown`, `text`), `download` | `200 OK` |
+| `GET` | `/api/v1/reports/mitre/matrix` | MITRE ATT&CK Matrix Grid Data | None | `200 OK` |
+| `POST` | `/api/v1/sample-data/load/{dataset_type}` | Quick-load sample SIEM datasets | Path: `wazuh`, `suricata`, `windows`, `web`, `multi_stage` | `200 OK` |
+| `GET` | `/reports/mitre` | Interactive ATT&CK Matrix Visualization Web View | HTML View | `200 OK` |

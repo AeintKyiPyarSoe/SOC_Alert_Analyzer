@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.8] - 2026-10-25
+
+### Added
+- **Mock SIEM Sample Alerts Directory (`sample_alerts/`)**: Curated realistic mock SIEM JSON exports allowing analysts to test and demonstrate the analyzer immediately with zero live API keys:
+  - `wazuh_alerts.json`: Wazuh SIEM alerts covering SSH brute force, `/etc/shadow` file integrity tampering, unauthorized sudo commands, and rootkit masquerading.
+  - `suricata_eve.json`: Suricata NIDS EVE alerts covering Nmap scan sweeps, Apache Struts RCE (CVE-2017-5638), C2 beaconing, and DNS amplification DoS.
+  - `windows_security_events.json`: Windows Event logs covering Event 4625 (Logon Brute Force), Event 4688 (PowerShell cradle), Event 7045 (New Service), Event 4698 (Scheduled Task), Event 1102 (Audit Log Cleared), and Defender 1116 (Mimikatz).
+  - `web_application_alerts.json`: WAF telemetry covering SQL Injection, Directory Traversal, XSS, and Web Shell probes.
+  - `siem_multi_stage_incident.json`: Multi-stage cyber kill-chain attack progression.
+  - `sample_alerts/README.md`: Detailed documentation of simulated scenarios, schemas, and usage instructions.
+- **Automated MITRE ATT&CK® Matrix Visualization & Threat Summary Reporting**:
+  - Interactive Matrix Heatmap UI: Added `/reports/mitre` web dashboard with responsive 14-column ATT&CK Enterprise Matrix Navigator (TA0043 to TA0040), severity-graded technique cards, and prescriptive defensive countermeasures.
+  - Multi-Format Reporting API: Added `GET /api/v1/reports/mitre` supporting `?format=json`, `?format=markdown`, and `?format=text` with direct download attachment headers (`?download=true`), and `GET /api/v1/reports/mitre/matrix` for grid telemetry.
+  - Standalone CLI Utility: Created `scripts/generate_mitre_report.py` for automated evaluation against local databases or mock SIEM JSON files.
+- **Hardened Containerization & Orchestration**:
+  - Hardened `Dockerfile` with unprivileged user execution (`socuser:socgroup`), layer caching, and built-in HTTP healthchecking.
+  - Production-ready `docker-compose.yml` with isolated internal bridge networking (`soc_internal_net`), non-crashing fallback defaults for zero-setup evaluation, and read-only volume mounts for `./sample_alerts` and `./sample_data`.
+  - Added `.dockerignore` preventing cache, virtual environments, and local SQLite database bloat.
+- **One-Click Telemetry Load Integration**: Extended `/api/v1/sample-data/load/{dataset_type}` and `/upload` web UI to ingest Windows Security Events, Web WAF alerts, and Multi-Stage APT campaigns directly.
+
+### Changed
+- **Canonical Version Synchronization**: Bumped package version across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` application metadata to `v1.2.8`.
+- **Test Suite Expansion**: Expanded automated test suite from 230 to **237 passing tests** (100% pass rate).
+- **Standalone Windows Executable Rebuild**: Compiled updated standalone executable `dist/SOC_Alert_Analyzer.exe` (54,090,201 bytes) with bundled `sample_alerts/` and verified runtime HTTP smoke tests on Windows loopback interface.
+- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `7fa6f844b6c16aa697c3d5a190c019387242fb3b8dd315ad1072af46230d56d3`.
+
+---
+
 ## [1.2.7] - 2026-10-21
 
 ### Added

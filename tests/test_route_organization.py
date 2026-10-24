@@ -37,7 +37,7 @@ def test_main_views_distinct_from_api():
     paths = app.openapi().get("paths", {})
     web_views = [p for p in paths if not p.startswith("/api/v1/")]
 
-    expected_views = {"/", "/alerts", "/alerts/{alert_id}", "/incidents", "/incidents/{incident_id}", "/upload"}
+    expected_views = {"/", "/alerts", "/alerts/{alert_id}", "/incidents", "/incidents/{incident_id}", "/upload", "/reports/mitre"}
     assert set(web_views) == expected_views
 
 
@@ -69,6 +69,6 @@ def test_canonical_version_consistency():
     from app.config import settings
     from app.main import app as fastapi_app
 
-    assert settings.VERSION == "1.2.7"
-    assert app.__version__ == "1.2.7"
-    assert fastapi_app.version == "1.2.7"
+    assert settings.VERSION == "1.2.8"
+    assert app.__version__ == "1.2.8"
+    assert fastapi_app.version == "1.2.8"

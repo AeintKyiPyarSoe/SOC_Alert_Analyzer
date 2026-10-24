@@ -793,33 +793,66 @@ def load_sample_dataset_route(
     from app.parsers.wazuh import WazuhParser
     from app.parsers.suricata import SuricataParser
     from app.parsers.linux_auth import LinuxAuthParser
+    from app.parsers.windows_event import WindowsEventParser
+    from app.parsers.generic_log import GenericLogParser
 
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        root_sample_dir = Path(sys._MEIPASS) / "sample_data"
+        sample_dirs = [
+            Path(sys._MEIPASS) / "sample_alerts",
+            Path(sys._MEIPASS) / "sample_data"
+        ]
     else:
-        root_sample_dir = Path(__file__).resolve().parent.parent.parent / "sample_data"
-    created = []
+        root_dir = Path(__file__).resolve().parent.parent.parent
+        sample_dirs = [
+            root_dir / "sample_alerts",
+            root_dir / "sample_data"
+        ]
 
-    if dataset_type == "wazuh":
-        path = root_sample_dir / "wazuh" / "wazuh_alerts.json"
-        if not path.exists():
+    def find_file(relative_subpath: Path) -> Optional[Path]:
+        for d in sample_dirs:
+            candidate = d / relative_subpath
+            if candidate.exists():
+                return candidate
+        return None
+
+    created = []
+    dtype = dataset_type.strip().lower()
+
+    if dtype == "wazuh":
+        path = find_file(Path("wazuh_alerts.json")) or find_file(Path("wazuh") / "wazuh_alerts.json")
+        if not path:
             raise HTTPException(status_code=404, detail="Wazuh sample file missing.")
-        content_txt = path.read_text(encoding="utf-8")
-        raw_events = WazuhParser().parse(content_txt)
-    elif dataset_type == "suricata":
-        path = root_sample_dir / "suricata" / "suricata_eve.json"
-        if not path.exists():
+        raw_events = WazuhParser().parse(path.read_text(encoding="utf-8"))
+    elif dtype == "suricata":
+        path = find_file(Path("suricata_eve.json")) or find_file(Path("suricata") / "suricata_eve.json")
+        if not path:
             raise HTTPException(status_code=404, detail="Suricata sample file missing.")
-        content_txt = path.read_text(encoding="utf-8")
-        raw_events = SuricataParser().parse(content_txt)
-    elif dataset_type in ("linux", "linux_auth"):
-        path = root_sample_dir / "linux" / "auth.log"
-        if not path.exists():
+        raw_events = SuricataParser().parse(path.read_text(encoding="utf-8"))
+    elif dtype in ("linux", "linux_auth"):
+        path = find_file(Path("linux") / "auth.log") or find_file(Path("auth.log"))
+        if not path:
             raise HTTPException(status_code=404, detail="Linux auth sample file missing.")
-        content_txt = path.read_text(encoding="utf-8")
-        raw_events = LinuxAuthParser().parse(content_txt)
+        raw_events = LinuxAuthParser().parse(path.read_text(encoding="utf-8"))
+    elif dtype in ("windows", "windows_events"):
+        path = find_file(Path("windows_security_events.json"))
+        if not path:
+            raise HTTPException(status_code=404, detail="Windows sample file missing.")
+        raw_events = WindowsEventParser().parse(path.read_text(encoding="utf-8"))
+    elif dtype in ("web", "web_waf", "waf"):
+        path = find_file(Path("web_application_alerts.json"))
+        if not path:
+            raise HTTPException(status_code=404, detail="Web WAF sample file missing.")
+        raw_events = GenericLogParser().parse(path.read_text(encoding="utf-8"))
+    elif dtype in ("multi_stage", "apt", "siem"):
+        path = find_file(Path("siem_multi_stage_incident.json"))
+        if not path:
+            raise HTTPException(status_code=404, detail="Multi-stage SIEM sample file missing.")
+        raw_events = GenericLogParser().parse(path.read_text(encoding="utf-8"))
     else:
-        raise HTTPException(status_code=400, detail="Invalid dataset type.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid dataset type: {dataset_type}. Supported types: wazuh, suricata, linux_auth, windows, web, multi_stage"
+        )
 
     for raw in raw_events:
         raw.setdefault("telemetry_origin", "HISTORICAL_LOG")
@@ -839,8 +872,79 @@ def load_sample_dataset_route(
 
     return {
         "status": "success",
-        "message": f"Successfully loaded {len(created)} sample {dataset_type} alerts.",
+        "message": f"Successfully loaded {len(created)} sample {dtype} alerts.",
         "alerts_count": len(created),
         "incidents_created": len(incidents)
+    }
+
+
+@router.get("/reports/mitre")
+def get_mitre_report(
+    format: str = Query("json", pattern="^(json|markdown|text|md)$"),
+    download: bool = Query(False),
+    origin: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Generate an automated MITRE ATT&CK Threat Summary Report mapping alerts
+    to enterprise tactics, techniques, and matrix heatmaps.
+    Supports JSON, Markdown, and ASCII text formats with optional file download.
+    """
+    import json as pyjson
+    is_guest = user.username in ("anonymous", "demo_viewer")
+    query = db.query(Alert)
+    if is_guest:
+        query = query.filter(Alert.telemetry_origin == "SIMULATED_DEMO")
+    elif origin:
+        query = query.filter(Alert.telemetry_origin == origin)
+
+    alerts = query.order_by(desc(Alert.timestamp)).all()
+    summary = MitreMapper.generate_summary_report(alerts)
+
+    fmt = format.lower()
+    if fmt in ("markdown", "md"):
+        content = MitreMapper.generate_markdown_report(summary)
+        headers = {}
+        if download:
+            headers["Content-Disposition"] = 'attachment; filename="mitre_attack_summary_report.md"'
+        return Response(content=content, media_type="text/markdown", headers=headers)
+    elif fmt == "text":
+        content = MitreMapper.generate_text_summary(summary)
+        headers = {}
+        if download:
+            headers["Content-Disposition"] = 'attachment; filename="mitre_attack_summary_report.txt"'
+        return Response(content=content, media_type="text/plain", headers=headers)
+    else:
+        if download:
+            return Response(
+                content=pyjson.dumps(summary, indent=2),
+                media_type="application/json",
+                headers={"Content-Disposition": 'attachment; filename="mitre_attack_summary_report.json"'}
+            )
+        return summary
+
+
+@router.get("/reports/mitre/matrix")
+def get_mitre_matrix(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Returns the MITRE ATT&CK Matrix Grid representation for visualization.
+    """
+    is_guest = user.username in ("anonymous", "demo_viewer")
+    query = db.query(Alert)
+    if is_guest:
+        query = query.filter(Alert.telemetry_origin == "SIMULATED_DEMO")
+    alerts = query.order_by(desc(Alert.timestamp)).all()
+    summary = MitreMapper.generate_summary_report(alerts)
+    return {
+        "generated_at": summary["generated_at"],
+        "coverage_percentage": summary["coverage_percentage"],
+        "total_alerts": summary["total_alerts"],
+        "mapped_alerts": summary["mapped_alerts"],
+        "matrix_grid": summary["matrix_grid"],
+        "top_techniques": summary["top_techniques"]
     }
 

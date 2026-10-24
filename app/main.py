@@ -435,3 +435,28 @@ def upload_view(request: Request, user: User = Depends(get_current_user)):
             "user": user
         }
     )
+
+@app.get("/reports/mitre", response_class=HTMLResponse)
+def mitre_report_view(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Render interactive MITRE ATT&CK Matrix visualization and threat summary report."""
+    is_guest = user.username in ("anonymous", "demo_viewer")
+    query = db.query(Alert)
+    if is_guest:
+        query = query.filter(Alert.telemetry_origin == "SIMULATED_DEMO")
+    alerts = query.order_by(desc(Alert.timestamp)).all()
+    summary = MitreMapper.generate_summary_report(alerts)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="mitre_report.html",
+        context={
+            "active_page": "mitre",
+            "summary": summary,
+            "demo_mode": settings.DEMO_MODE,
+            "user": user
+        }
+    )

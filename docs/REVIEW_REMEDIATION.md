@@ -233,6 +233,65 @@ Following the v1.2.5 baseline, SOC Alert Analyzer completed a comprehensive four
 - **Dual Checksum Verification**: Verified identically via CertUtil, Python `hashlib`, and `scripts/verify_release_checksum.py`
 - **Live Smoke-Test Suite**: 100% passed (CLI `--help`, web dashboard `GET /`, bundled static CSS/JS, unauthenticated VIEWER RBAC, host sensor `monitoring_active=True`, OpenAPI `1.2.7`, authenticated ANALYST API key, sample Wazuh data loader, SQLite DB persistence, and dashboard stats telemetry isolation)
 
+---
 
+## 9. Version 1.2.8 Sample Datasets, MITRE ATT&CK Matrix & Containerization Audit
+
+### Executive Overview (v1.2.8)
+Building directly upon the v1.2.7 release, SOC Alert Analyzer v1.2.8 introduced three key functional enhancements requested by security operations teams and triage analysts:
+1. **Out-of-the-Box SIEM Sample Datasets**: A dedicated `sample_alerts/` repository module with pre-built mock SIEM JSON exports allowing instant triage exploration and testing without requiring live external SIEM API keys.
+2. **MITRE ATT&CK Enterprise Matrix Visualization & Reporting Engine**: Dynamic tactic and technique heatmaps covering all 14 Enterprise Matrix categories, automated executive Markdown/text report generation, and interactive UI views.
+3. **Hardened Containerization Architecture**: Production-ready `Dockerfile` and `docker-compose.yml` infrastructure with non-root security contexts, isolated volumes, and built-in healthchecks.
+4. **Standalone Binary & Specification Realignment**: Version synchronization to `1.2.8`, standalone Windows `.exe` re-compilation with bundled sample datasets, and verification via SHA-256 digest validation.
 
 ---
+
+### Engineering Deliverables & Implementation Highlights
+
+#### 1. Zero-Configuration SIEM Sample Datasets (`sample_alerts/`)
+- Created structured mock event exports reflecting production telemetry formats:
+  - `sample_alerts/wazuh_alerts.json`: Host-level FIM (File Integrity Monitoring), PAM brute force, and SSH anomaly alerts.
+  - `sample_alerts/suricata_eve.json`: Network NIDS signatures covering ET Open rules, Log4j exploitation attempts, and DNS C2 tunneling.
+  - `sample_alerts/windows_security_events.json`: Windows Event Log ID 4625 (Logon Failure), 4688 (Process Creation with PowerShell obfuscation), and 4720 (User Creation).
+  - `sample_alerts/web_application_alerts.json`: OWASP Top 10 web layer telemetry including SQLi, Path Traversal, and Command Injection.
+  - `sample_alerts/siem_multi_stage_incident.json`: Multi-vector advanced persistent threat kill-chain correlating external reconnaissance to credential dumping.
+  - `sample_alerts/README.md`: Field mappings, schema guides, and CLI/API usage instructions.
+- Exposed backend discovery via `GET /api/v1/alerts/sample-files` and single-click frontend ingestion in `app/templates/upload.html`.
+
+#### 2. MITRE ATT&CK Visualization & Reporting
+- **Tactic & Technique Registry**: Expanded `app/security/mitre_mapper.py` to define canonical MITRE Enterprise ATT&CK matrix ordering (`TA0043` through `TA0040`), primary tactic association, and defensive triage recommendations (`TACTIC_RECOMMENDATIONS`).
+- **Reporting APIs**:
+  - `GET /api/v1/reports/mitre`: Generates structured summary reports, coverage metrics, and tactical playbooks.
+  - `GET /api/v1/reports/mitre/matrix`: Delivers 14-column tabular heatmap data suitable for SOC operations center displays.
+  - `GET /reports/mitre`: Interactive Jinja2 template view (`app/templates/mitre_report.html`) featuring visual heat levels, tactic coverage stats, and downloadable Markdown reports.
+- **Standalone CLI Generator**: Created `scripts/generate_mitre_report.py` outputting comprehensive security assessments (e.g., `docs/sample_mitre_attack_report.md`).
+
+#### 3. Containerization & Operational Hardening
+- **Multi-Stage Containerization (`Dockerfile`)**:
+  - Debian slim base with non-root runtime (`socuser:socgroup`, UID 10001).
+  - Built-in curl healthcheck verifying endpoint responsiveness (`/api/v1/health/live`).
+- **Orchestration (`docker-compose.yml`)**:
+  - Resilient environment defaults preventing startup crashes.
+  - Named persistent volume for SQLite database storage (`soc_data:/app/data`).
+  - Read-only volume mounts for `./sample_alerts` and `./sample_data`.
+- **Packaging Guardrails (`.dockerignore`)**: Excludes development caches, local secrets (`.env`), test artifacts, and PyInstaller distribution folders.
+
+---
+
+### Test Suite & Verification Results (v1.2.8)
+- **Total Automated Pytest Tests**: **237 passed, 0 failed (100% pass rate in 27.34s)**
+- **New Test Suite**: `tests/test_mitre_visualization_and_samples.py` (7 tests covering sample dataset loading, ATT&CK mapping, report endpoints, and matrix data structures).
+- **Route Integrity**: Updated `tests/test_route_organization.py` verifying `/reports/mitre` registration and routing isolation.
+- **Static Code Analysis & Security**: 0 Flake8 errors, 0 Bandit High/Medium issues, clean dependency audit.
+
+---
+
+### Standalone Executable Compilation (`v1.2.8`)
+- **Build Tool**: PyInstaller 6.13.0 with Python 3.12.9 (Windows x86_64)
+- **Bundled Assets**: Added `sample_alerts` data tree to `SOC_Alert_Analyzer.spec`.
+- **Executable Location**: `dist/SOC_Alert_Analyzer.exe`
+- **Binary Size**: 54,090,201 bytes (~51.5 MB uncompressed standalone executable)
+- **SHA-256 Digest**: `7fa6f844b6c16aa697c3d5a190c019387242fb3b8dd315ad1072af46230d56d3`
+- **Verification Record**: Recorded in `dist/SHA256SUMS.txt` and verified via `scripts/verify_release_checksum.py`.
+- **Live Smoke Test**: Binary executed successfully in isolation; verified `--help`, `/` root route, authentication flows, `/reports/mitre` UI, and sample alert ingestion.
+

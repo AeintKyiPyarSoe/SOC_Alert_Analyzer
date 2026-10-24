@@ -1,0 +1,38 @@
+# Git & VCS
+.git
+.gitignore
+.github
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Testing & Coverage
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local databases and runtime state
+*.db
+soc_alerts.db
+.auth_credentials
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Distribution & Build
+build/
+dist/
+*.egg-info/
+SOC_Alert_Analyzer.spec
+
+# Uploaded files
+uploads/*
+!uploads/.gitkeep

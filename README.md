@@ -2,13 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-230%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-237%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Coverage](https://img.shields.io/badge/coverage-86%25%20(Linux)%20%7C%2088%25%20(Windows)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.2.7-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.8-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Less noise. More clarity.**  
@@ -84,6 +84,23 @@ Calculates risk on a deterministic 0–100 scale across 4 severity tiers:
 * **High-Performance Batched Ingestion**: Uses an in-memory active candidate index for $O(1)$ intra-batch recurrence deduplication combined with bounded chunked database writes (`DB_BATCH_SIZE = 250`).
 * **Atomic Transaction Integrity**: Wraps ingestion, deduplication, and incident correlation in a single database transaction with automatic `db.rollback()` on failure, eliminating partial imports and corrupted database states. Delivered an **8.3x throughput speedup** (~904 to ~7,510 events/sec on 1,000-event datasets).
 
+### 5. Automated MITRE ATT&CK® Threat Mapping & Matrix Visualization
+* **Enterprise ATT&CK Matrix Navigator**: Real-time visual matrix heatmap across all 14 standard enterprise tactics (Initial Access through Impact) showing active techniques color-coded by threat urgency (Critical, High, Medium, Low).
+* **Automated Output Reporting**: Generates comprehensive threat summary reports available across multiple consumption interfaces:
+  * **Web Dashboard**: Interactive visual matrix and tactic breakdown at [`/reports/mitre`](http://localhost:8000/reports/mitre).
+  * **REST API**: `GET /api/v1/reports/mitre` supporting `?format=markdown`, `?format=json`, and `?format=text` with direct download attachment headers (`?download=true`).
+  * **Standalone CLI Utility**: Run `python scripts/generate_mitre_report.py` to evaluate the live database or analyze mock SIEM exports directly.
+* **Prescriptive Countermeasures**: Automatically maps detected adversary tactics to tailored mitigation guidance and prioritized defense controls.
+
+### 6. Mock SIEM Telemetry & Offline Zero-Key Evaluation
+* **Dedicated Mock Telemetry Directory (`sample_alerts/`)**: Includes realistic SIEM JSON exports so security analysts and evaluators can test the analyzer immediately without connecting live API keys:
+  * `wazuh_alerts.json`: Wazuh SIEM alerts covering SSH brute force, `/etc/shadow` file integrity tampering, unauthorized sudo commands, and rootkit masquerading.
+  * `suricata_eve.json`: Suricata NIDS EVE alerts covering Nmap scan sweeps, Apache Struts RCE (CVE-2017-5638), C2 beaconing, and DNS amplification DoS.
+  * `windows_security_events.json`: Windows Event logs covering Event 4625 (Logon Brute Force), Event 4688 (PowerShell cradle), Event 7045 (New Service), Event 4698 (Scheduled Task), Event 1102 (Audit Log Cleared), and Defender 1116 (Mimikatz).
+  * `web_application_alerts.json`: WAF telemetry covering SQL Injection, Directory Traversal, XSS, and Web Shell probes.
+  * `siem_multi_stage_incident.json`: Multi-stage cyber kill-chain attack progression from active scanning to credential access and C2.
+* **Instant One-Click Ingestion**: Ingest sample datasets via the Web UI (`/upload`), REST API (`POST /api/v1/sample-data/load/{dataset_type}`), or cURL commands.
+
 ---
 
 ## 📊 Detection Evaluation Benchmark
@@ -110,9 +127,9 @@ The behavioral detection engine is empirically evaluated using both development 
    Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from the [Latest Release](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
 
 2. **Verify Cryptographic SHA-256 Integrity**:
-   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (26,542,217 bytes) is:
+   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (54,090,201 bytes) is:
    ```text
-   87af9cf4dd739b86ad7dd679d8ba0d7ada522477ef40643668a7506c8721a725  SOC_Alert_Analyzer.exe
+   7fa6f844b6c16aa697c3d5a190c019387242fb3b8dd315ad1072af46230d56d3  SOC_Alert_Analyzer.exe
    ```
 
    * **Method 1: Windows PowerShell**
@@ -145,18 +162,24 @@ The behavioral detection engine is empirically evaluated using both development 
 
 ### Option B: Docker Compose (Hardened Multi-Container)
 
+Containerized deployment simplifies dependency management and allows security analysts to evaluate the stack in an isolated, production-like environment:
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
 cd SOC_Alert_Analyzer
 
-# 2. Configure environment
-cp .env.example .env
-
-# 3. Build and launch containers
+# 2. Build and launch containers (works out of the box with zero setup)
 docker compose up -d --build
+
+# (Optional: to customize credentials, create a .env file from template)
+# cp .env.example .env
 ```
 Navigate to `http://localhost:8000`.
+
+* **Hardened Security**: The application runs under an unprivileged user (`socuser:socgroup`). PostgreSQL is restricted to the internal Docker bridge network (`soc_internal_net`).
+* **Automated Healthchecks**: Both `db` and `web` services feature integrated healthchecks to ensure reliable orchestration.
+* **Volume Mounts**: The `sample_alerts/` directory is mounted read-only (`:ro`) into the container so analysts can test immediately without live API keys.
 
 ### Option C: Local Python Development
 
@@ -184,7 +207,7 @@ Open your browser to `http://127.0.0.1:8000`.
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains an automated pytest test suite (**230 passing tests**, 100% pass rate, 86% on Linux / 88% on Windows with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
+The repository maintains an automated pytest test suite (**237 passing tests**, 100% pass rate, 86% on Linux / 88% on Windows with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
 
 ```powershell
 python -m pytest -v --cov=app --cov-report=term-missing
@@ -225,7 +248,10 @@ tests/test_ingestion_performance_and_transactions.py::test_large_batch_ingestion
 tests/test_ingestion_performance_and_transactions.py::test_transaction_rollback_on_batch_failure PASSED
 tests/test_upload_security.py::test_upload_binary_executable_rejected PASSED
 tests/test_upload_security.py::test_upload_path_traversal_filename_sanitized PASSED
-============================ 230 passed in 22.78s =============================
+tests/test_mitre_visualization_and_samples.py::test_sample_alerts_json_validity_and_parsing PASSED
+tests/test_mitre_visualization_and_samples.py::test_mitre_summary_report_generation PASSED
+tests/test_mitre_visualization_and_samples.py::test_mitre_report_api_endpoints PASSED
+============================ 237 passed in 27.34s =============================
 ```
 
 ### Continuous Integration (GitHub Actions)

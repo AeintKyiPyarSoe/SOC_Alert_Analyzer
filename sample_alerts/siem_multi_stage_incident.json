@@ -1,0 +1,93 @@
+[
+  {
+    "timestamp": "2026-10-24T20:00:00Z",
+    "source_type": "Network_NIDS",
+    "event_type": "network_scan",
+    "description": "Port scan detected from untrusted external IP sweep targeting edge firewall",
+    "source_ip": "198.51.100.120",
+    "destination_ip": "10.0.1.15",
+    "source_port": 54110,
+    "destination_port": 80,
+    "username": null
+  },
+  {
+    "timestamp": "2026-10-24T20:02:15Z",
+    "source_type": "WAF",
+    "event_type": "web_sql_injection",
+    "description": "SQL Injection attempt detected in HTTP parameter id=1 UNION SELECT null,username,password FROM users--",
+    "source_ip": "198.51.100.120",
+    "destination_ip": "10.0.1.15",
+    "source_port": 54112,
+    "destination_port": 443,
+    "username": "guest"
+  },
+  {
+    "timestamp": "2026-10-24T20:03:30Z",
+    "source_type": "WAF",
+    "event_type": "web_shell_probe",
+    "description": "Web shell upload probe targeting /uploads/cmd.php with code execution payloads",
+    "source_ip": "198.51.100.120",
+    "destination_ip": "10.0.1.15",
+    "source_port": 54115,
+    "destination_port": 443,
+    "username": "www-data"
+  },
+  {
+    "timestamp": "2026-10-24T20:05:00Z",
+    "source_type": "Host_EDR",
+    "event_type": "powershell_script_block",
+    "description": "Suspicious PowerShell execution with encoded script block downloading remote payload",
+    "source_ip": "10.0.1.15",
+    "destination_ip": "198.51.100.120",
+    "source_port": 49200,
+    "destination_port": 8443,
+    "username": "svc_web"
+  },
+  {
+    "timestamp": "2026-10-24T20:06:45Z",
+    "source_type": "Host_EDR",
+    "event_type": "persistence_startup_created",
+    "description": "Persistence established: Startup registry run key modified for unsigned payload",
+    "source_ip": "10.0.1.15",
+    "destination_ip": null,
+    "username": "svc_web"
+  },
+  {
+    "timestamp": "2026-10-24T20:08:10Z",
+    "source_type": "Host_EDR",
+    "event_type": "sudo_command_execution",
+    "description": "Unusual sudo privilege escalation: User svc_web spawned root shell via /bin/bash",
+    "source_ip": "10.0.1.15",
+    "destination_ip": null,
+    "username": "svc_web"
+  },
+  {
+    "timestamp": "2026-10-24T20:10:00Z",
+    "source_type": "Host_EDR",
+    "event_type": "windows_log_cleared",
+    "description": "Defense Evasion: Security audit log cleared by adversary session",
+    "source_ip": "10.0.1.15",
+    "destination_ip": null,
+    "username": "root"
+  },
+  {
+    "timestamp": "2026-10-24T20:12:30Z",
+    "source_type": "Host_EDR",
+    "event_type": "windows_defender_threat",
+    "description": "OS Credential Dumping: Mimikatz memory injection detected targeting LSASS process",
+    "source_ip": "10.0.1.15",
+    "destination_ip": null,
+    "username": "root"
+  },
+  {
+    "timestamp": "2026-10-24T20:15:00Z",
+    "source_type": "Network_NIDS",
+    "event_type": "suspicious_outbound_connection",
+    "description": "Suspicious outbound connection detected to known Command and Control (C2) server",
+    "source_ip": "10.0.1.15",
+    "destination_ip": "203.0.113.88",
+    "source_port": 49215,
+    "destination_port": 443,
+    "username": null
+  }
+]

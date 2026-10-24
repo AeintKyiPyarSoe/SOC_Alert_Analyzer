@@ -45,6 +45,11 @@ Each feature includes:
 - **Then** the system rejects the file with HTTP `422 Unprocessable Entity` or `400 Bad Request`,
 - **And** displays an error message informing the user of the invalid format without server crash.
 
+##### Scenario 1.5: Offline Mock SIEM Telemetry & Sample Alerts (Zero API Keys)
+- **Given** an evaluator or security analyst without external SIEM credentials,
+- **When** the user selects a practice dataset from `sample_alerts/` (e.g., `wazuh_alerts.json`, `suricata_eve.json`, `windows_security_events.json`, `web_application_alerts.json`, `siem_multi_stage_incident.json`),
+- **Then** the system ingests, normalizes, scores, correlates, and attributes MITRE techniques without connecting to external services or requiring live API keys.
+
 #### Verification Checklist
 - [ ] Accepts `.json`, `.log`, `.txt`, `.eve`, `.xml`, and `.csv` extensions.
 - [ ] Successfully processes Wazuh JSON alerts.
@@ -144,12 +149,26 @@ Each feature includes:
 - **When** the user clicks the technique badge,
 - **Then** the browser opens the official MITRE ATT&CK documentation page (e.g., `https://attack.mitre.org/techniques/T1110/`) in a new tab.
 
+##### Scenario 4.4: Automated ATT&CK Matrix Navigator & Heatmap Visualization
+- **Given** ingested alerts with attributed MITRE techniques,
+- **When** navigating to `/reports/mitre`,
+- **Then** the system renders an interactive 14-column ATT&CK Enterprise Matrix Heatmap (TA0043 to TA0040),
+- **And** highlights detected adversary tactics and techniques color-coded by peak severity urgency.
+
+##### Scenario 4.5: Multi-Format Threat Summary Export & CLI Reporting
+- **Given** security alerts in the application database or a mock SIEM export,
+- **When** the analyst requests `/api/v1/reports/mitre?format=markdown|json|text` or executes `python scripts/generate_mitre_report.py`,
+- **Then** the system outputs a publication-quality threat mapping report with executive summary KPIs, tactic distributions, and actionable defensive recommendations.
+
 #### Verification Checklist
 - [ ] SSH brute force correctly maps to `T1110`.
 - [ ] Port scan / reconnaissance correctly maps to `T1046`.
 - [ ] Suspicious PowerShell commands map to `T1059.001`.
 - [ ] Lateral SSH connection attempts map to `T1021.004`.
 - [ ] Unmapped / generic events gracefully display `N/A` without errors.
+- [ ] Automated matrix heatmap renders across all 14 enterprise tactics.
+- [ ] Multi-format reports exportable as JSON, Markdown, and ASCII text.
+- [ ] Standalone CLI report runner executes against local database or JSON log files.
 
 ---
 
