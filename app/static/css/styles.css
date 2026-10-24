@@ -248,6 +248,17 @@ button, input, select, textarea {
     font-weight: 600;
     padding: 0.32rem 0.65rem;
     border-radius: var(--radius-pill);
+    transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.live-sensor-pill.paused {
+    border-color: rgba(246, 173, 85, 0.4);
+    color: var(--text-faint);
+}
+
+.live-sensor-pill.active {
+    border-color: rgba(160, 237, 197, 0.4);
+    color: var(--text-muted);
 }
 
 .live-sensor-pill .pulse-dot {
@@ -257,6 +268,12 @@ button, input, select, textarea {
     background: var(--accent-mint);
     box-shadow: 0 0 6px var(--accent-mint);
     animation: pulseGlow 2s infinite;
+}
+
+.live-sensor-pill .pulse-dot.paused {
+    background: #718096;
+    box-shadow: none;
+    animation: none;
 }
 
 @keyframes pulseGlow {
@@ -464,6 +481,11 @@ button, input, select, textarea {
     color: var(--text-main);
     padding: 2px 6px;
     border-radius: 4px;
+}
+
+.data-notice-status-tag.paused {
+    border-color: rgba(246, 173, 85, 0.4);
+    color: var(--text-muted);
 }
 
 /* --------------------------------------------------------------------------

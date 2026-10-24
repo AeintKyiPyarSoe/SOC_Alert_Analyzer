@@ -2,20 +2,20 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SOC_Alert_Analyzer-1.2.10",
-  "documentNamespace": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/spdx/1.2.10",
+  "name": "SOC_Alert_Analyzer-1.2.11",
+  "documentNamespace": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/spdx/1.2.11",
   "creationInfo": {
     "creators": [
       "Tool: SOC_Alert_Analyzer_SBOM_Generator-1.1.0",
       "Organization: SOC Alert Analyzer Project"
     ],
-    "created": "2026-10-24T19:35:35Z"
+    "created": "2026-10-24T20:14:14Z"
   },
   "packages": [
     {
       "SPDXID": "SPDXRef-Package-SOC-Alert-Analyzer",
       "name": "SOC_Alert_Analyzer",
-      "versionInfo": "1.2.10",
+      "versionInfo": "1.2.11",
       "downloadLocation": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer",
       "licenseConcluded": "MIT",
       "licenseDeclared": "MIT"

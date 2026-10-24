@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 from fastapi import WebSocket, WebSocketDisconnect
-from app.config import settings
+from app.config import settings, load_monitoring_preferences, save_monitoring_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -16,21 +16,41 @@ class ThreatStreamManager:
 
     def __init__(self):
         self.active_connections: Dict[WebSocket, Any] = {}
-        self.host_monitoring_active: bool = getattr(settings, "HOST_MONITORING_ENABLED", True)
-        self.simulation_active: bool = getattr(settings, "SIMULATION_ENABLED", False)
+        _prefs = load_monitoring_preferences()
+        self.host_monitoring_active: bool = _prefs.get("host_monitoring_active", getattr(settings, "HOST_MONITORING_ENABLED", True))
+        self.simulation_active: bool = _prefs.get("simulation_active", getattr(settings, "SIMULATION_ENABLED", False))
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
         self._simulator_task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
+    def get_status(self) -> Dict[str, Any]:
+        """
+        Return authoritative monitoring and simulation lifecycle status.
+        Single source of truth for both REST and WebSocket status checks.
+        """
+        task_running = self._monitor_task is not None and not self._monitor_task.done()
+        sim_task_running = self._simulator_task is not None and not self._simulator_task.done()
+        return {
+            "host_monitoring_active": self.host_monitoring_active,
+            "simulation_active": self.simulation_active,
+            "task_status": "RUNNING" if task_running else "PAUSED",
+            "simulation_task_status": "RUNNING" if sim_task_running else "PAUSED",
+            "connected_clients": len(self.active_connections),
+        }
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         """Record the application event loop for dependable task creation across threads."""
         self._loop = loop
 
-    def start_host_monitoring(self) -> bool:
+    def start_host_monitoring(self, persist: bool = True) -> bool:
         """Start or resume real host security monitoring."""
         self.host_monitoring_active = True
+        if persist:
+            try:
+                save_monitoring_preferences(host_monitoring=True, simulation=self.simulation_active)
+            except Exception as e:
+                logger.warning(f"Failed to persist host monitoring preference: {e}")
         loop = None
         try:
             loop = asyncio.get_running_loop()
@@ -52,18 +72,28 @@ class ThreatStreamManager:
             logger.info("Spawned host monitor background task.")
         return self.host_monitoring_active
 
-    def stop_host_monitoring(self) -> bool:
+    def stop_host_monitoring(self, persist: bool = True) -> bool:
         """Pause real host security monitoring and cancel the running background task."""
         self.host_monitoring_active = False
+        if persist:
+            try:
+                save_monitoring_preferences(host_monitoring=False, simulation=self.simulation_active)
+            except Exception as e:
+                logger.warning(f"Failed to persist host monitoring preference: {e}")
         if self._monitor_task and not self._monitor_task.done():
             self._monitor_task.cancel()
             self._monitor_task = None
             logger.info("Cancelled host monitor background task.")
         return self.host_monitoring_active
 
-    def start_simulation(self) -> bool:
+    def start_simulation(self, persist: bool = True) -> bool:
         """Start or resume demonstration threat simulation."""
         self.simulation_active = True
+        if persist:
+            try:
+                save_monitoring_preferences(host_monitoring=self.host_monitoring_active, simulation=True)
+            except Exception as e:
+                logger.warning(f"Failed to persist simulation preference: {e}")
         loop = None
         try:
             loop = asyncio.get_running_loop()
@@ -85,9 +115,14 @@ class ThreatStreamManager:
             logger.info("Spawned simulator background task.")
         return self.simulation_active
 
-    def stop_simulation(self) -> bool:
+    def stop_simulation(self, persist: bool = True) -> bool:
         """Pause demonstration threat simulation and cancel the running background task."""
         self.simulation_active = False
+        if persist:
+            try:
+                save_monitoring_preferences(host_monitoring=self.host_monitoring_active, simulation=False)
+            except Exception as e:
+                logger.warning(f"Failed to persist simulation preference: {e}")
         if self._simulator_task and not self._simulator_task.done():
             self._simulator_task.cancel()
             self._simulator_task = None
@@ -95,7 +130,7 @@ class ThreatStreamManager:
         return self.simulation_active
 
     async def shutdown(self):
-        """Cleanly cancel and await all background monitoring and simulation tasks."""
+        """Cleanly cancel and await all background monitoring and simulation tasks without overwriting persisted preferences."""
         self.host_monitoring_active = False
         self.simulation_active = False
         try:

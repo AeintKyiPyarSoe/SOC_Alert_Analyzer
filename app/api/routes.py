@@ -634,9 +634,10 @@ async def toggle_host_monitor(
         stream_manager.start_host_monitoring()
     else:
         stream_manager.stop_host_monitoring()
+    status = stream_manager.get_status()
     return {
         "status": "success",
-        "host_monitoring_active": stream_manager.host_monitoring_active
+        **status
     }
 
 @router.post("/simulation/toggle")
@@ -649,9 +650,10 @@ async def toggle_simulation(
         stream_manager.start_simulation()
     else:
         stream_manager.stop_simulation()
+    status = stream_manager.get_status()
     return {
         "status": "success",
-        "simulation_active": stream_manager.simulation_active
+        **status
     }
 
 @router.post("/stream/toggle")
@@ -664,19 +666,16 @@ async def toggle_stream_backward_compat(
         stream_manager.start_simulation()
     else:
         stream_manager.stop_simulation()
+    status = stream_manager.get_status()
     return {
         "status": "success",
-        "simulation_active": stream_manager.simulation_active
+        **status
     }
 
 @router.get("/stream/status")
 def get_stream_status():
-    """Check whether real-time host monitoring and simulation are actively running."""
-    return {
-        "host_monitoring_active": stream_manager.host_monitoring_active,
-        "simulation_active": stream_manager.simulation_active,
-        "connected_clients": len(stream_manager.active_connections)
-    }
+    """Check authoritative lifecycle status of real-time host monitoring and simulation."""
+    return stream_manager.get_status()
 
 # -------------------------------------------------------------
 # REST API: Real-World Host Sensor & Telemetry
@@ -742,7 +741,8 @@ def clear_all_alerts(
     user: User = Depends(require_role(Role.ADMIN))
 ):
     """
-    Clear all alerts and incidents, and immediately re-scan the host for genuine live threats.
+    Clear all alerts and incidents. If host monitoring is active, re-scans the host for genuine live threats.
+    If host monitoring is paused, purges all alerts without re-scanning or recreating baseline alerts.
     Requires elevated ADMIN role.
     """
     from app.models.incident import IncidentAlert
@@ -753,16 +753,25 @@ def clear_all_alerts(
     db.commit()
 
     host_sensor.seen_signatures.clear()
-    created = host_sensor.run_full_audit(db)
-    incidents = IncidentCorrelator.correlate_alerts(db)
 
-    audit_trail.record("ALERTS_CLEARED", user.username, user.role.value, "internal", "Cleared all alerts and re-scanned baseline")
+    if stream_manager.host_monitoring_active:
+        created = host_sensor.run_full_audit(db)
+        incidents = IncidentCorrelator.correlate_alerts(db)
+        msg = f"All historical records cleared. Re-scanned host system: {len(created)} genuine findings."
+        real_count = len(created)
+        incidents_count = len(incidents)
+    else:
+        msg = "All historical records cleared. Host monitoring is paused; host was not re-scanned."
+        real_count = 0
+        incidents_count = 0
+
+    audit_trail.record("ALERTS_CLEARED", user.username, user.role.value, "internal", msg)
 
     return {
         "status": "success",
-        "message": f"All historical records cleared. Re-scanned host system: {len(created)} genuine findings.",
-        "real_alerts_count": len(created),
-        "incidents_created": len(incidents)
+        "message": msg,
+        "real_alerts_count": real_count,
+        "incidents_created": incidents_count
     }
 
 @router.get("/audit/logs")

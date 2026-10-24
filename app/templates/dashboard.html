@@ -21,11 +21,13 @@
         <button class="btn btn-outline btn-sm" id="btn-clear-alerts" onclick="clearAllAlerts()" title="Clear alert history and re-audit host">
             🗑️ Clear History
         </button>
-        <button class="btn btn-outline btn-sm" id="btn-toggle-host-monitor" onclick="toggleHostMonitoring()" title="Pause or resume continuous host security sensor">
-            ⚡ Host Sensor: ACTIVE
+        {% set _is_mon_active = stream_status.host_monitoring_active if stream_status is defined else (host_info.monitoring_active if host_info is defined and host_info else True) %}
+        {% set _is_sim_active = stream_status.simulation_active if stream_status is defined else False %}
+        <button class="btn {% if _is_mon_active %}btn-outline{% else %}btn-secondary{% endif %} btn-sm" id="btn-toggle-host-monitor" onclick="toggleHostMonitoring()" title="{% if _is_mon_active %}Pause continuous host security sensor{% else %}Resume continuous host security sensor{% endif %}">
+            {% if _is_mon_active %}⚡ Host Sensor: ACTIVE{% else %}⏸️ Host Sensor: PAUSED{% endif %}
         </button>
-        <button class="btn btn-secondary btn-sm" id="btn-toggle-sim" onclick="toggleSimulation()" title="Pause or resume synthetic threat simulation stream">
-            🎮 Simulation: PAUSED
+        <button class="btn {% if _is_sim_active %}btn-outline{% else %}btn-secondary{% endif %} btn-sm" id="btn-toggle-sim" onclick="toggleSimulation()" title="{% if _is_sim_active %}Pause synthetic threat simulation stream{% else %}Resume synthetic threat simulation stream{% endif %}">
+            {% if _is_sim_active %}🎮 Simulation: ACTIVE{% else %}⏸️ Simulation: PAUSED{% endif %}
         </button>
         <a href="/reports/mitre" class="btn btn-secondary btn-sm" title="View ATT&CK Matrix Heatmap & Threat Summary Report">
             🗺️ MITRE Matrix
@@ -44,9 +46,9 @@
         <span class="data-notice-icon">
             <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
         </span>
-        <span id="data-notice-text">Host EDR: Monitoring local machine processes, sockets & telemetry in real time</span>
+        <span id="data-notice-text">{% if not _is_mon_active %}Host EDR: Continuous monitoring is paused. Historical alerts retained.{% else %}Host EDR: Monitoring local machine processes, sockets & telemetry in real time{% endif %}</span>
     </div>
-    <span class="data-notice-status-tag" id="data-notice-tag">Live Sensor</span>
+    <span class="data-notice-status-tag {% if not _is_mon_active %}paused{% endif %}" id="data-notice-tag">{% if not _is_mon_active %}Sensor Paused{% else %}Live Sensor{% endif %}</span>
 </div>
 
 <!-- 6.1 Severity Overview Cards -->
@@ -223,9 +225,9 @@
             </div>
         </div>
     </div>
-    <div style="font-size: 0.75rem; color: var(--accent-mint); font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+    <div style="font-size: 0.75rem; color: {% if not _is_mon_active %}var(--text-muted){% else %}var(--accent-mint){% endif %}; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
         <span>🛡️</span>
-        <span id="host-edr-mode-label">Native Host EDR Active</span>
+        <span id="host-edr-mode-label">{% if not _is_mon_active %}Native Host EDR Paused{% else %}Native Host EDR Active{% endif %}</span>
     </div>
 </aside>
 {% endif %}

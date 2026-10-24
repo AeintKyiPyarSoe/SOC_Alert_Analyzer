@@ -84,9 +84,93 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
     return generated
 
 
+def load_monitoring_preferences(data_dir: Optional[Path] = None) -> dict:
+    """
+    Loads saved runtime monitoring preferences from the persistent application data directory.
+    Precedence:
+      1. Saved preference file (monitoring_preferences.json)
+      2. Explicit environment variable overrides (HOST_MONITORING_ENABLED / SIMULATION_ENABLED)
+      3. Secure defaults (Host Monitoring: True, Simulation: False)
+    """
+    target_dir = data_dir or DATA_DIR
+    pref_file = target_dir / "monitoring_preferences.json"
+    saved = {}
+    if pref_file.exists():
+        try:
+            with open(pref_file, "r", encoding="utf-8") as f:
+                content = json.load(f)
+                if isinstance(content, dict):
+                    saved = content
+        except Exception:
+            pass
+
+    env_host = os.getenv("HOST_MONITORING_ENABLED")
+    env_sim = os.getenv("SIMULATION_ENABLED")
+
+    host_monitoring = saved.get("host_monitoring_active")
+    if host_monitoring is None:
+        if env_host is not None:
+            host_monitoring = env_host.lower() in ("true", "1", "yes")
+        else:
+            host_monitoring = True
+
+    simulation = saved.get("simulation_active")
+    if simulation is None:
+        if env_sim is not None:
+            simulation = env_sim.lower() in ("true", "1", "yes")
+        else:
+            simulation = False
+
+    return {
+        "host_monitoring_active": bool(host_monitoring),
+        "simulation_active": bool(simulation)
+    }
+
+
+def save_monitoring_preferences(
+    host_monitoring: bool,
+    simulation: Optional[bool] = None,
+    data_dir: Optional[Path] = None
+) -> dict:
+    """
+    Atomically persists user monitoring preferences to persistent data directory.
+    Guarantees state is preserved across Windows EXE restarts, local runs, and Docker volume mounts.
+    Never stores sensitive credentials in this file.
+    """
+    target_dir = data_dir or DATA_DIR
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    pref_file = target_dir / "monitoring_preferences.json"
+    temp_file = target_dir / f".monitoring_preferences_{secrets.token_hex(4)}.tmp"
+
+    current = load_monitoring_preferences(target_dir)
+    current["host_monitoring_active"] = bool(host_monitoring)
+    if simulation is not None:
+        current["simulation_active"] = bool(simulation)
+
+    try:
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(current, f, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        os.replace(temp_file, pref_file)
+    except Exception:
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except Exception:
+                pass
+    return current
+
+
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.10"
+    VERSION: str = "1.2.11"
     API_V1_STR: str = "/api/v1"
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
@@ -286,9 +370,10 @@ class Settings:
         self.DEDUP_WINDOW_SECONDS: int = int(os.getenv("DEDUP_WINDOW_SECONDS", "300"))
         self.MAX_ALERTS_PER_INCIDENT: int = int(os.getenv("MAX_ALERTS_PER_INCIDENT", "1000"))
 
-        # Real Host Monitoring & Demonstration Simulation Controls
-        self.HOST_MONITORING_ENABLED: bool = os.getenv("HOST_MONITORING_ENABLED", "true").lower() in ("true", "1", "yes")
-        self.SIMULATION_ENABLED: bool = os.getenv("SIMULATION_ENABLED", "false").lower() in ("true", "1", "yes")
+        # Real Host Monitoring & Demonstration Simulation Controls (hydrated from persisted preferences)
+        _saved_prefs = load_monitoring_preferences(self.DATA_DIR)
+        self.HOST_MONITORING_ENABLED: bool = _saved_prefs["host_monitoring_active"]
+        self.SIMULATION_ENABLED: bool = _saved_prefs["simulation_active"]
 
         # CORS Settings: strictly configured allowed origins.
         _allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
