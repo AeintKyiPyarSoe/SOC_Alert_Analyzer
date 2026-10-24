@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from app.main import app
@@ -254,3 +255,33 @@ def test_preference_persistence_failure_handling(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", fail_replace)
     with pytest.raises(PermissionError):
         save_monitoring_preferences(host_monitoring=False, simulation=True, data_dir=tmp_path, raise_on_error=True)
+
+
+def test_task_unexpected_crash_reporting():
+    """Verify stream_manager accurately reports ERROR when background task crashes unexpectedly."""
+    from app.security.stream import stream_manager
+
+    async def run_crash_test():
+        async def crashing_coro():
+            raise RuntimeError("Simulated unhandled sensor crash")
+
+        task = asyncio.create_task(crashing_coro())
+        try:
+            await task
+        except RuntimeError:
+            pass
+
+        stream_manager._monitor_task = task
+        stream_manager.host_monitoring_active = True
+
+        status = stream_manager.get_status()
+        assert status["monitoring_state"] == "ERROR"
+        assert status["task_status"] == "ERROR"
+        assert "Simulated unhandled sensor crash" in status["task_error"]
+        assert status["host_monitoring_active"] is False  # Must not falsely claim active when crashed!
+
+        # Clean up
+        stream_manager._monitor_task = None
+        stream_manager.host_monitoring_active = True
+
+    asyncio.run(run_crash_test())

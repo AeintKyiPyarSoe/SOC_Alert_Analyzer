@@ -30,14 +30,44 @@ class ThreatStreamManager:
         """
         Return authoritative monitoring and simulation lifecycle status.
         Single source of truth for both REST and WebSocket status checks.
+        Accurately reports task failure and prevents claiming ACTIVE when task stopped or crashed.
         """
         task_running = self._monitor_task is not None and not self._monitor_task.done()
+        task_error = None
+        if self._monitor_task is not None and self._monitor_task.done():
+            try:
+                exc = self._monitor_task.exception()
+                if exc:
+                    task_error = str(exc)
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        if not self.host_monitoring_active:
+            effective_state = "PAUSED"
+        elif task_error:
+            effective_state = "ERROR"
+        else:
+            effective_state = "ACTIVE"
+
         sim_task_running = self._simulator_task is not None and not self._simulator_task.done()
+        sim_task_error = None
+        if self._simulator_task is not None and self._simulator_task.done():
+            try:
+                exc = self._simulator_task.exception()
+                if exc:
+                    sim_task_error = str(exc)
+            except (asyncio.CancelledError, Exception):
+                pass
+
         return {
-            "host_monitoring_active": self.host_monitoring_active,
+            "host_monitoring_active": self.host_monitoring_active and (effective_state != "ERROR"),
+            "monitoring_state": effective_state,
+            "desired_active": self.host_monitoring_active,
             "simulation_active": self.simulation_active,
-            "task_status": "RUNNING" if task_running else "PAUSED",
-            "simulation_task_status": "RUNNING" if sim_task_running else "PAUSED",
+            "task_status": "RUNNING" if task_running else ("ERROR" if task_error else "PAUSED"),
+            "task_error": task_error,
+            "simulation_task_status": "RUNNING" if sim_task_running else ("ERROR" if sim_task_error else "PAUSED"),
+            "simulation_task_error": sim_task_error,
             "connected_clients": len(self.active_connections),
             "persisted": self.last_persistence_status.get("persisted", True),
             "persistence_error": self.last_persistence_status.get("persistence_error"),

@@ -2,13 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-301%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-312%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Coverage](https://img.shields.io/badge/coverage-87%25%20(Overall)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.2.12-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.13-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5%20%7C%20SPDX-blue.svg)](sbom.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -128,9 +128,9 @@ The behavioral detection engine is empirically evaluated using both development 
    Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from the [Latest Release](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
 
 2. **Verify Cryptographic SHA-256 Integrity**:
-   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (26,591,239 bytes) is:
+   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (54,113,978 bytes) is:
    ```text
-   5d64ddf4f6ea5c7f021973a6eccbe6bb7ba7f3b62f551abad1b0fe4aa2490a84  SOC_Alert_Analyzer.exe
+   6e7a6537144d5649f0a2de93ee3736282bde23934341683538b0d37c8bb0da11  SOC_Alert_Analyzer.exe
    ```
 
    * **Method 1: Windows PowerShell**
@@ -367,7 +367,7 @@ tests/test_mitre_visualization_and_samples.py::test_mitre_report_api_endpoints P
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
 ├── scripts/                  # Detection evaluation & utility automation scripts
-├── tests/                    # 301 automated pytest tests covering all subsystems (87% code coverage, >=85% CI floor)
+├── tests/                    # 312 automated pytest tests covering all subsystems (87% code coverage, >=85% CI floor)
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file

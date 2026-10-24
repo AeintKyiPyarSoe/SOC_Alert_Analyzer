@@ -2,9 +2,9 @@
 
 **Date**: October 25, 2026  
 **Target Repository**: [SOC_Alert_Analyzer](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer)  
-**Release Version**: v1.2.12 (Latest Active Release)  
+**Release Version**: v1.2.13 (Latest Active Release)  
 **Execution Environment**: Local Workspace (Source of Truth)  
-**Final Test Status**: **301 passed, 0 failed (100% passing rate, 86.65% overall code coverage, >=85% CI floor)**  
+**Final Test Status**: **312 passed, 0 failed (100% passing rate, >=85% CI floor)**  
 **Code Quality**: Flake8: 0 fatal/syntax errors (`E9,F63,F7,F82`); Bandit AST SAST: 0 Medium/High issues; Pip-Audit: 0 known vulnerabilities  
 
 ---
@@ -404,3 +404,54 @@ Version 1.2.12 achieves complete end-to-end reliability for real-world host moni
 - **Standalone Windows Executable**: 24,895,523 bytes (GitHub Actions runner) / 54,110,131 bytes (local build), verified across process restarts with `scripts/test_exe_lifecycle_integration.py` (Tests A through G passing)
 - **Authoritative Release Checksum**: `28f566b62b6e8711282920225b26a51a0c80fa50e82694c0165def8417424ed9` (GitHub Actions runner) / `c902ac6f4d44eea802511f77a65bea968c5a4fb3557a2e9fb3af6e91d9879d27` (local build)
 - **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, clean pip-audit (0 vulnerabilities)
+
+---
+
+## 13. Version 1.2.13 WebSocket Packaging Repair, Executable WebSocket Integration, Task Lifecycle Hardening & Browser Automation
+
+### Executive Overview (v1.2.13)
+Version 1.2.13 addresses WebSocket transport failures in frozen PyInstaller packaging, establishes an end-to-end WebSocket integration suite testing the packaged executable, enhances monitoring task exception resilience, implements frontend monotonic request sequencing, introduces full-browser Playwright test coverage, and evaluates defensive detection against independently sourced telemetry datasets.
+
+### Architectural & Security Enhancements
+1. **WebSocket Protocol Packaging in PyInstaller**:
+   - Bundled modern Uvicorn sans-io WebSocket protocol implementations (`uvicorn.protocols.websockets.websockets_sansio_impl.WebSocketsSansIOProtocol`) and `websockets` submodules in `SOC_Alert_Analyzer.spec`.
+   - Added `websockets>=12.0` (`websockets==17.1`) to `requirements.txt` and `requirements.lock`.
+   - Bundled transitive dependencies (`mako`, `greenlet`, `annotated_types`, and database dialect drivers).
+2. **Mandatory Standalone Executable WebSocket Test Suite (Tests A–J)**:
+   - Built `scripts/test_exe_websocket_integration.py` exercising 10 mandatory integration stages against the compiled `.exe`:
+     - Test A: Process startup and port readiness.
+     - Test B: Analyst authentication.
+     - Test C: Single-use WebSocket ticket issuance (`POST /api/v1/auth/ws-ticket`).
+     - Test D: HTTP 101 WebSocket handshake.
+     - Test E: Real-time bidirectional ping/pong frame validation.
+     - Test F: Host sensor pause with preserved WebSocket connection.
+     - Test G: Host sensor resume with preserved WebSocket connection.
+     - Test H: Clean disconnection and reconnect with fresh ticket.
+     - Test I: Security rejection of reused, invalid, and unauthenticated tickets.
+     - Test J: Clean process termination and resource cleanup.
+   - Integrated as a mandatory release-blocking gate in `.github/workflows/release-exe.yml`.
+3. **Monitoring Task Exception Handling & Quiescence**:
+   - Updated `ThreatStreamManager.get_status()` in `app/security/stream.py` to capture `_monitor_task.exception()`, returning an explicit `ERROR` state rather than misleading `ACTIVE`.
+   - Added cooperative cancellation checkpoints and `scan_in_progress` state tracking in `app/security/host_sensor.py`.
+   - Rolled back active database transactions when an in-progress scan is interrupted by a pause event.
+4. **Frontend Monotonic Request Sequencing & State Synchronization**:
+   - Added `currentMonitoringRequestId` sequencing in `app/static/js/app.js` to discard delayed or out-of-order responses.
+   - Blocked background heartbeat responses from overriding user-initiated UI transitions (`PAUSING`, `RESUMING`).
+   - Contextualized the `Clear History` confirmation modal text to inform analysts whether clearing will trigger an immediate rescan (if ACTIVE) or remain quiescent (if PAUSED).
+5. **Real Browser UI Automation Suite (Playwright)**:
+   - Added `tests/test_browser_monitoring_ui.py` with 10 headless Chromium automation scenarios testing UI badge updates, button state transitions, modal dialogues, tab switching, and connection drop recovery.
+6. **Independent Defensive Detection Telemetry Validation**:
+   - Created `sample_data/independent_telemetry/independent_telemetry_dataset.json` with documented provenance from OTTR Project, SigmaHQ, and Atomic Red Team.
+   - Evaluated detection accuracy (66.7%), precision (80.0%), and recall (57.1%) in `scripts/evaluate_endpoint_attacks.py` and generated `docs/independent_telemetry_evaluation_report.json`.
+7. **Supply Chain Security & CVE Remediation**:
+   - Upgraded `certifi` from `2026.7.22` to `2026.10.23`, resolving PYSEC-2026-4320.
+   - Pinned and verified all 28 runtime dependencies across `requirements.lock`, CycloneDX `sbom.json`, and SPDX `sbom.spdx.json`.
+
+### Key Verification Metrics (v1.2.13)
+- **Automated Pytest Results**: **312 passed, 0 failed (100% passing rate)**
+- **Playwright Browser Tests**: **10 passed, 0 failed (100% passing rate)**
+- **Executable WebSocket Integration (Tests A–J)**: **10 passed, 0 failed (100% passing rate)**
+- **Executable Lifecycle Integration (Tests A–G)**: **7 passed, 0 failed (100% passing rate)**
+- **Standalone Windows Executable**: 54,113,978 bytes (local build)
+- **Authoritative Release Checksum**: `6e7a6537144d5649f0a2de93ee3736282bde23934341683538b0d37c8bb0da11` (local build)
+- **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, 0 Pip-Audit vulnerabilities

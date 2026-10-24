@@ -449,6 +449,29 @@ class EndpointAttackEvaluator:
             "correct": (is_threat == scenario.is_malicious) and technique_match
         }
 
+    @classmethod
+    def load_independent_telemetry_scenarios(cls, json_path: Optional[Path] = None) -> List[EndpointAttackScenario]:
+        """Loads independently sourced defensive telemetry scenarios from disk with provenance."""
+        if json_path is None:
+            json_path = Path(__file__).resolve().parent.parent.parent / "sample_data" / "independent_telemetry" / "independent_telemetry_dataset.json"
+        if not json_path.exists():
+            return []
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        scenarios = []
+        for item in data.get("scenarios", []):
+            scenarios.append(EndpointAttackScenario(
+                scenario_id=item["scenario_id"],
+                attack_phase=item.get("attack_phase", ""),
+                is_malicious=item["is_malicious"],
+                event_id=item["event_id"],
+                source_type=item["source_type"],
+                raw_event=item["raw_event"],
+                expected_technique=item.get("expected_technique"),
+                expected_tactic=item.get("expected_tactic"),
+                description=item.get("description", "")
+            ))
+        return scenarios
+
     def run_benchmark(self, scenarios: Optional[List[EndpointAttackScenario]] = None) -> Dict[str, Any]:
         """Runs the full endpoint attack evaluation benchmark across all scenarios."""
         target_scenarios = scenarios if scenarios is not None else ENDPOINT_SCENARIOS

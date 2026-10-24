@@ -287,7 +287,10 @@ async function initThreatStream() {
                         procCount.textContent = `${data.host_info.process_count} active`;
                     }
                     if (typeof data.host_info.monitoring_active === 'boolean') {
-                        updateMonitoringUI({ host_monitoring_active: data.host_info.monitoring_active });
+                        // Prevent late heartbeat messages from incorrectly overriding a user-initiated transition
+                        if (SOC_STATE.monitoringState !== 'PAUSING' && SOC_STATE.monitoringState !== 'RESUMING' && SOC_STATE.monitoringState !== 'CHECKING') {
+                            updateMonitoringUI({ host_monitoring_active: data.host_info.monitoring_active });
+                        }
                     }
                 }
             } catch (e) {
@@ -1072,7 +1075,11 @@ async function runTestDrill() {
 }
 
 async function clearAllAlerts() {
-    if (!confirm('Clear historical alerts and re-scan host for active findings?')) return;
+    const isPaused = SOC_STATE.monitoringState === 'PAUSED';
+    const confirmMsg = isPaused
+        ? 'Clear saved alert history? Host monitoring is paused, so no automatic rescan will run.'
+        : 'Clear historical alerts and perform a new host audit?';
+    if (!confirm(confirmMsg)) return;
     showToast('Clearing alert history...');
     try {
         const resp = await fetch('/api/v1/alerts/clear', {
@@ -1106,6 +1113,8 @@ function updateMonitoringUI(state) {
             SOC_STATE.isHostMonitoringActive = true;
         } else if (SOC_STATE.monitoringState === 'PAUSED') {
             SOC_STATE.isHostMonitoringActive = false;
+        } else if (SOC_STATE.monitoringState === 'ERROR' || SOC_STATE.monitoringState === 'UNKNOWN') {
+            SOC_STATE.isHostMonitoringActive = false;
         }
     } else if (state && typeof state === 'object') {
         if (typeof state.host_monitoring_active === 'boolean') {
@@ -1117,12 +1126,16 @@ function updateMonitoringUI(state) {
         }
         if (state.monitoring_state) {
             SOC_STATE.monitoringState = String(state.monitoring_state).toUpperCase();
+            if (SOC_STATE.monitoringState === 'ERROR' || SOC_STATE.monitoringState === 'STOPPED') {
+                SOC_STATE.isHostMonitoringActive = false;
+            }
         }
     }
 
     const mState = SOC_STATE.monitoringState || 'CHECKING';
     const isHostActive = mState === 'ACTIVE';
     const isHostPaused = mState === 'PAUSED';
+    const isHostError = mState === 'ERROR';
     const isSimActive = !!SOC_STATE.isSimulationActive;
 
     // 1. Header Live Sensor Pill & Pulse Dot
@@ -1138,6 +1151,9 @@ function updateMonitoringUI(state) {
         } else if (isHostPaused) {
             livePill.classList.add('paused');
             livePill.title = 'Native Host Security Sensor: PAUSED (Historical data preserved)';
+        } else if (isHostError) {
+            livePill.classList.add('error');
+            livePill.title = 'Native Host Security Sensor: Background Task ERROR';
         } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING') {
             livePill.classList.add('checking');
             livePill.title = `Native Host Security Sensor: ${mState}...`;
@@ -1153,6 +1169,8 @@ function updateMonitoringUI(state) {
             // Active state uses pulse animation
         } else if (isHostPaused) {
             dot.classList.add('paused');
+        } else if (isHostError) {
+            dot.classList.add('error');
         } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING') {
             dot.classList.add('checking');
         } else {
@@ -1165,6 +1183,8 @@ function updateMonitoringUI(state) {
             liveText.textContent = 'HOST SENSOR: ACTIVE';
         } else if (isHostPaused) {
             liveText.textContent = 'HOST SENSOR: PAUSED';
+        } else if (isHostError) {
+            liveText.textContent = 'HOST SENSOR: ERROR';
         } else if (mState === 'PAUSING') {
             liveText.textContent = 'HOST SENSOR: PAUSING...';
         } else if (mState === 'RESUMING') {
@@ -1188,6 +1208,11 @@ function updateMonitoringUI(state) {
         } else if (isHostPaused) {
             btnHost.textContent = '⏸️ Host Sensor: PAUSED';
             btnHost.title = 'Resume continuous host security sensor';
+            btnHost.classList.add('btn-secondary');
+            btnHost.disabled = false;
+        } else if (isHostError) {
+            btnHost.textContent = '⚠️ Host Sensor: ERROR';
+            btnHost.title = 'Sensor background task stopped with error. Click to resume.';
             btnHost.classList.add('btn-secondary');
             btnHost.disabled = false;
         } else if (mState === 'PAUSING') {
@@ -1274,17 +1299,30 @@ function updateControlButtons() {
     updateMonitoringUI();
 }
 
+let currentMonitoringRequestId = 0;
+
 async function initStreamStatus() {
+    const reqId = ++currentMonitoringRequestId;
     try {
         const resp = await fetch('/api/v1/stream/status');
+        if (reqId !== currentMonitoringRequestId) {
+            // Superseded by newer status request or user toggle
+            return;
+        }
         if (resp.ok) {
             const data = await resp.json();
-            updateMonitoringUI(data);
+            if (reqId === currentMonitoringRequestId) {
+                updateMonitoringUI(data);
+            }
         } else {
-            updateMonitoringUI('UNKNOWN');
+            if (reqId === currentMonitoringRequestId) {
+                updateMonitoringUI('UNKNOWN');
+            }
         }
     } catch (e) {
-        updateMonitoringUI('UNKNOWN');
+        if (reqId === currentMonitoringRequestId) {
+            updateMonitoringUI('UNKNOWN');
+        }
     }
 }
 
@@ -1295,6 +1333,7 @@ async function toggleHostMonitoring() {
 
     const currentlyActive = SOC_STATE.monitoringState === 'ACTIVE';
     const targetState = !currentlyActive;
+    const reqId = ++currentMonitoringRequestId; // Invalidate any pending status queries
     updateMonitoringUI(targetState ? 'RESUMING' : 'PAUSING');
 
     try {
@@ -1302,6 +1341,9 @@ async function toggleHostMonitoring() {
             method: 'POST',
             headers: getApiHeaders()
         });
+        if (reqId !== currentMonitoringRequestId) {
+            return;
+        }
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             showToast(`Failed to update host sensor: ${err.detail || resp.statusText}`);
@@ -1309,15 +1351,19 @@ async function toggleHostMonitoring() {
             return;
         }
         const data = await resp.json();
-        updateMonitoringUI(data);
-        if (data.persisted === false) {
-            showToast(targetState ? 'Host sensor active (Warning: preference save failed)' : 'Host sensor paused (Warning: preference save failed)');
-        } else {
-            showToast(targetState ? 'Host sensor active' : 'Host sensor paused');
+        if (reqId === currentMonitoringRequestId) {
+            updateMonitoringUI(data);
+            if (data.persisted === false) {
+                showToast(targetState ? 'Host sensor active (Warning: preference save failed)' : 'Host sensor paused (Warning: preference save failed)');
+            } else {
+                showToast(targetState ? 'Host sensor active' : 'Host sensor paused');
+            }
         }
     } catch (e) {
-        showToast('Network error updating host sensor status');
-        await initStreamStatus();
+        if (reqId === currentMonitoringRequestId) {
+            showToast('Network error updating host sensor status');
+            await initStreamStatus();
+        }
     }
 }
 

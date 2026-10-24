@@ -20,15 +20,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 import importlib.metadata
 
-# Core direct runtime dependencies of SOC Alert Analyzer
+# Core direct and transitive runtime dependencies of SOC Alert Analyzer
 RUNTIME_BASE_PACKAGES = [
     "fastapi",
     "starlette",
     "pydantic",
     "pydantic-core",
+    "annotated-types",
     "uvicorn",
+    "websockets",
     "sqlalchemy",
+    "greenlet",
     "alembic",
+    "Mako",
     "psutil",
     "defusedxml",
     "jinja2",
