@@ -38,6 +38,10 @@ def test_cyclonedx_sbom_valid():
     assert "sqlalchemy" in names
     assert "psutil" in names
     assert "psycopg2-binary" in names
+    assert "websockets" in names
+    assert "Mako" in names or "mako" in names
+    assert "greenlet" in names
+    assert "annotated-types" in names
 
     # Verify application metadata version alignment
     import app

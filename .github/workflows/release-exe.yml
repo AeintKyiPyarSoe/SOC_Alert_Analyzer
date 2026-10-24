@@ -68,6 +68,10 @@ jobs:
         run: |
           python scripts/test_exe_lifecycle_integration.py --exe dist/SOC_Alert_Analyzer.exe
 
+      - name: Run Executable WebSocket Handshake & Security Integration Test Suite (Tests A-J)
+        run: |
+          python scripts/test_exe_websocket_integration.py --exe dist/SOC_Alert_Analyzer.exe
+
       - name: Verify Packaged Resources & Live HTTP API Smoke Test
         shell: powershell
         run: |

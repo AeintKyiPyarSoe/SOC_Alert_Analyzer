@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.13] - 2026-10-25
+
+### Fixed & Enhanced
+- **WebSocket Protocol Implementation & PyInstaller Packaging**:
+  - Resolved `No supported WebSocket library detected` runtime failure by explicitly pinning `websockets>=12.0` (`websockets==17.1`) in `requirements.txt` and `requirements.lock`.
+  - Updated `SOC_Alert_Analyzer.spec` to bundle modern Uvicorn sans-io WebSocket implementations (`uvicorn.protocols.websockets.websockets_sansio_impl`, `wsproto_impl`, `websockets.asyncio.server`, `websockets.server`, `websockets.connection`, `websockets.frames`, `websockets.protocol`).
+  - Standalone Windows executable packages full native WebSocket protocol stack without requiring external Python environments.
+- **Mandatory Standalone Executable WebSocket Integration Test Suite (Tests A-J)**:
+  - Implemented `scripts/test_exe_websocket_integration.py` validating the compiled executable across Tests A through J (process spawn, authentication, short-lived single-use ticket acquisition, HTTP 101 WebSocket handshake, ping/pong frame exchange, sensor pause while connected, sensor resume, clean reconnect, ticket replay rejection, invalid ticket rejection, unauthenticated rejection, and clean shutdown).
+  - Enforced as a mandatory release-blocking gate in `.github/workflows/release-exe.yml`.
+- **Monitoring Task Failure Reporting & Observable Quiescence**:
+  - Enhanced `ThreatStreamManager.get_status()` in `app/security/stream.py` to differentiate task health (`RUNNING`, `PAUSED`, `ERROR`, `STOPPED`) and prevent falsely reporting `ACTIVE` if a background task crashes unexpectedly.
+  - Implemented cooperative cancellation checkpoints and `scan_in_progress` state tracking in `HostSecuritySensor.run_full_audit` and `run_fast_audit` with transactional rollback upon pause.
+- **Frontend Monotonic Request Sequencing & State Synchronization**:
+  - Introduced monotonic request sequencing (`currentMonitoringRequestId`) in `app/static/js/app.js` to ensure older or delayed HTTP responses cannot overwrite newer user-initiated pause/resume transitions.
+  - Prevented late WebSocket heartbeat frames from overriding confirmed monitoring states.
+  - Differentiated `Clear History` confirmation modal text when Host Monitoring is paused vs active.
+- **Real Browser-Level UI Automation**:
+  - Added `tests/test_browser_monitoring_ui.py` testing the rendered DOM with Playwright across Scenarios 1 through 10 (neutral checking state, active, paused, 500 error display, stale response race prevention, decoupled WebSocket, connection loss, preference save failure warnings, and accessibility button state locks).
+- **Independently Sourced Defensive Telemetry Benchmark**:
+  - Integrated `sample_data/independent_telemetry/independent_telemetry_dataset.json` derived from credible public defensive research datasets (OTTR Project, SigmaHQ, Atomic Red Team).
+  - Evaluated detection accuracy, confusion matrices, and MITRE ATT&CK technique mapping with transparent scientific integrity in `scripts/evaluate_endpoint_attacks.py`.
+- **Reproducible Dependencies & Accurate SBOM**:
+  - Regenerated `requirements.lock`, CycloneDX v1.5 `sbom.json`, and SPDX v2.3 `sbom.spdx.json` fully locking all 28 runtime and transitive dependencies.
+
+---
+
 ## [1.2.12] - 2026-10-25
 
 ### Added

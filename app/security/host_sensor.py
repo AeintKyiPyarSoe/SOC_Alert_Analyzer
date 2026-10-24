@@ -95,6 +95,7 @@ class HostSecuritySensor:
         except Exception:
             self.known_pids = set()
         self.known_startup_files: Set[str] = self._get_startup_files()
+        self.scan_in_progress: bool = False
 
     def _is_signature_seen_recent(self, sig: str, max_age_seconds: Optional[int] = None) -> bool:
         """
@@ -904,21 +905,49 @@ class HostSecuritySensor:
 
     def run_fast_audit(self, db: Session, check_active: bool = False) -> List[Alert]:
         """Runs fast, sub-second differential checks on new processes, active sockets, and startup folder."""
-        raw_events = []
-        raw_events.extend(self.audit_new_processes())
-        raw_events.extend(self.audit_network_sockets())
-        raw_events.extend(self.audit_startup_folder())
-        return self._ingest_events(raw_events, db, check_active=check_active)
+        self.scan_in_progress = True
+        try:
+            from app.security.stream import stream_manager
+            raw_events = []
+            raw_events.extend(self.audit_new_processes())
+            if check_active and not stream_manager.host_monitoring_active:
+                db.rollback()
+                return []
+            raw_events.extend(self.audit_network_sockets())
+            if check_active and not stream_manager.host_monitoring_active:
+                db.rollback()
+                return []
+            raw_events.extend(self.audit_startup_folder())
+            return self._ingest_events(raw_events, db, check_active=check_active)
+        finally:
+            self.scan_in_progress = False
 
     def run_full_audit(self, db: Session, check_active: bool = False) -> List[Alert]:
         """Runs all live host security audits, normalizes findings, commits to DB, and correlates."""
-        raw_events = []
-        raw_events.extend(self.audit_processes())
-        raw_events.extend(self.audit_network_sockets())
-        raw_events.extend(self.audit_startup_folder())
-        raw_events.extend(self.audit_firewall_posture())
-        raw_events.extend(self.audit_event_logs())
-        return self._ingest_events(raw_events, db, check_active=check_active)
+        self.scan_in_progress = True
+        try:
+            from app.security.stream import stream_manager
+            raw_events = []
+            raw_events.extend(self.audit_processes())
+            if check_active and not stream_manager.host_monitoring_active:
+                db.rollback()
+                return []
+            raw_events.extend(self.audit_network_sockets())
+            if check_active and not stream_manager.host_monitoring_active:
+                db.rollback()
+                return []
+            raw_events.extend(self.audit_startup_folder())
+            if check_active and not stream_manager.host_monitoring_active:
+                db.rollback()
+                return []
+            raw_events.extend(self.audit_firewall_posture())
+            if check_active and not stream_manager.host_monitoring_active:
+                db.rollback()
+                return []
+            raw_events.extend(self.audit_event_logs())
+            return self._ingest_events(raw_events, db, check_active=check_active)
+        finally:
+            self.scan_in_progress = False
 
     def run_test_drill(self, db: Session) -> Dict[str, Any]:
         """

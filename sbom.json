@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:2cc2c4a9-7dc1-4120-b0ca-7a11a7291291",
+  "serialNumber": "urn:uuid:6f2ebfaf-30c3-4613-bc27-d2a7d69625c4",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-24T21:02:16.527468+00:00",
+    "timestamp": "2026-10-24T21:57:21.146613+00:00",
     "tools": [
       {
         "vendor": "SOC Alert Analyzer Project",
@@ -16,7 +16,7 @@
     "component": {
       "type": "application",
       "name": "SOC_Alert_Analyzer",
-      "version": "1.2.12",
+      "version": "1.2.13",
       "description": "Defensive blue-team SOC alert triage and host security audit workbench",
       "licenses": [
         {
@@ -25,15 +25,35 @@
           }
         }
       ],
-      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.12"
+      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.13"
     }
   },
   "components": [
     {
       "type": "library",
+      "name": "Mako",
+      "version": "1.4.3",
+      "purl": "pkg:pypi/Mako@1.4.3",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
       "name": "alembic",
       "version": "1.20.0",
       "purl": "pkg:pypi/alembic@1.20.0",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "purl": "pkg:pypi/annotated-types@0.8.0",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -52,8 +72,8 @@
     {
       "type": "library",
       "name": "certifi",
-      "version": "2026.7.22",
-      "purl": "pkg:pypi/certifi@2026.7.22",
+      "version": "2026.10.23",
+      "purl": "pkg:pypi/certifi@2026.10.23",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -84,6 +104,16 @@
       "name": "fastapi",
       "version": "0.141.1",
       "purl": "pkg:pypi/fastapi@0.141.1",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "greenlet",
+      "version": "3.5.5",
+      "purl": "pkg:pypi/greenlet@3.5.5",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -264,6 +294,16 @@
       "name": "uvicorn",
       "version": "0.52.4",
       "purl": "pkg:pypi/uvicorn@0.52.4",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "websockets",
+      "version": "17.1",
+      "purl": "pkg:pypi/websockets@17.1",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
