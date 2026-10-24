@@ -48,6 +48,8 @@ def main():
     print(f"  F1 Score                  : {m['f1_score']:.4f} ({m['f1_score']*100:.1f}%)")
     print(f"  False Positive Rate (FPR) : {m['false_positive_rate']:.4f} ({m['false_positive_rate']*100:.1f}%)")
     print(f"  Accuracy                  : {m['accuracy']:.4f} ({m['accuracy']*100:.1f}%)")
+    print(f"  MITRE Technique Match Acc : {m['mitre_technique_match_accuracy']:.4f} ({m['mitre_technique_match_accuracy']*100:.1f}%)")
+    print(f"  MITRE Mismatches Count    : {len(m['mitre_technique_mismatches'])}")
     print(f"{'='*70}")
 
     print("\n  CONFUSION MATRIX:")

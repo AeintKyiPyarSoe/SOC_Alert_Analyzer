@@ -138,6 +138,7 @@ class WindowsEventParser(BaseParser):
         dst_ip = data.get("DestinationIp") or item.get("destination_ip") or item.get("DestinationAddress")
         dst_port = data.get("DestinationPort") or item.get("destination_port")
         username = data.get("TargetUserName") or data.get("AccountName") or data.get("SubjectUserName") or data.get("User") or item.get("username")
+        logon_type = data.get("LogonType") or item.get("LogonType")
 
         # Extract Sysmon / Process Creation fields
         image = data.get("Image") or data.get("NewProcessName") or data.get("ProcessName")
@@ -146,6 +147,11 @@ class WindowsEventParser(BaseParser):
         target_obj = data.get("TargetObject") or data.get("TargetFilename") or data.get("TargetImage")
         granted_access = data.get("GrantedAccess")
         query_name = data.get("QueryName")
+
+        if not logon_type and isinstance(msg, str):
+            lt_m = re.search(r"(?:Logon Type|LogonType):\s*(\d+)", msg, re.IGNORECASE)
+            if lt_m:
+                logon_type = lt_m.group(1).strip()
 
         if not src_ip and isinstance(msg, str):
             ip_m = re.search(r"(?:Source Network Address|IP Address|Workstation IP|Client IP|SourceIp):\s*([0-9a-fA-F\.\:]+)", msg, re.IGNORECASE)
@@ -172,6 +178,14 @@ class WindowsEventParser(BaseParser):
             )
             if any(t in cmd_check for t in suspicious_tokens):
                 event_type = "windows_suspicious_process" if event_id == 4688 else "sysmon_suspicious_process"
+        elif event_id == 22:
+            q_lower = str(query_name or "").lower()
+            suspicious_dns_indicators = (
+                "dynu.net", "duckdns.org", "no-ip.", "ngrok.io", "hopto.org",
+                "zapto.org", "bounceme.net", "c2", "beacon", "tunnel"
+            )
+            if any(ind in q_lower for ind in suspicious_dns_indicators):
+                event_type = "sysmon_suspicious_dns"
 
         # Build clean, informative description
         first_line = msg.split("\n")[0].strip() if isinstance(msg, str) else default_desc
@@ -196,6 +210,16 @@ class WindowsEventParser(BaseParser):
                 description = f"{prefix} DNS Query: {query_name or 'Domain'} by {image or 'Process'}"
             else:
                 description = f"{prefix} {first_line}"
+        elif event_id == 4688:
+            description = f"{prefix} Process Created: {image or 'Unknown'}"
+            if cmdline:
+                description += f" - CommandLine: {cmdline}"
+            if parent_image:
+                description += f" (Parent: {parent_image})"
+            if username:
+                description += f" (User: {username})"
+        elif event_id == 4624 and str(logon_type) in ("2", "7", "11"):
+            description = f"{prefix} Windows Interactive Console Logon (User: {username or 'Unknown'}, LogonType: {logon_type})"
         else:
             description = f"{prefix} {first_line}"
             if username:
@@ -275,6 +299,7 @@ class WindowsEventParser(BaseParser):
                             data_dict[name] = d.text or ""
 
                 username = data_dict.get("TargetUserName") or data_dict.get("AccountName") or data_dict.get("SubjectUserName") or data_dict.get("User")
+                logon_type = data_dict.get("LogonType")
                 src_ip = data_dict.get("IpAddress") or data_dict.get("SourceNetworkAddress") or data_dict.get("SourceIp")
                 if src_ip in ("-", "::1", "127.0.0.1"):
                     src_ip = None
@@ -301,6 +326,14 @@ class WindowsEventParser(BaseParser):
                     )
                     if any(t in cmd_check for t in suspicious_tokens):
                         event_type = "windows_suspicious_process" if event_id == 4688 else "sysmon_suspicious_process"
+                elif event_id == 22:
+                    q_lower = str(query_name or "").lower()
+                    suspicious_dns_indicators = (
+                        "dynu.net", "duckdns.org", "no-ip.", "ngrok.io", "hopto.org",
+                        "zapto.org", "bounceme.net", "c2", "beacon", "tunnel"
+                    )
+                    if any(ind in q_lower for ind in suspicious_dns_indicators):
+                        event_type = "sysmon_suspicious_dns"
 
                 prefix = f"[Sysmon Event {event_id}]" if is_sysmon else f"[Event {event_id}]"
                 if is_sysmon:
@@ -322,6 +355,16 @@ class WindowsEventParser(BaseParser):
                         desc = f"{prefix} DNS Query: {query_name or 'Domain'} by {image or 'Process'}"
                     else:
                         desc = f"{prefix} {default_desc}"
+                elif event_id == 4688:
+                    desc = f"{prefix} Process Created: {image or 'Unknown'}"
+                    if cmdline:
+                        desc += f" - CommandLine: {cmdline}"
+                    if parent_image:
+                        desc += f" (Parent: {parent_image})"
+                    if username:
+                        desc += f" (User: {username})"
+                elif event_id == 4624 and str(logon_type) in ("2", "7", "11"):
+                    desc = f"{prefix} Windows Interactive Console Logon (User: {username or 'Unknown'}, LogonType: {logon_type})"
                 else:
                     desc = f"{prefix} {default_desc}"
                     if username:

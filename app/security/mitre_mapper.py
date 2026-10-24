@@ -356,7 +356,7 @@ class MitreMapper:
             return "T1021.002"
 
         # DNS C2 Query / Tunneling
-        if "sysmon_dns_query" in event or ("dns query" in desc and ("dynu" in desc or "c2" in desc or "beacon" in desc)):
+        if "sysmon_suspicious_dns" in event or ("dns" in desc and ("dynu" in desc or "c2" in desc or "beacon" in desc or "duckdns" in desc or "ngrok" in desc or "tunnel" in desc)):
             return "T1071.004"
 
         # Brute force / Auth failure
@@ -373,6 +373,8 @@ class MitreMapper:
 
         # Valid Accounts / Windows Logon
         if "windows_successful_logon" in event:
+            if any(w in desc for w in ("interactive", "normal", "routine", "unlock", "badge", "benign")):
+                return None
             return "T1078"
 
         # Privilege escalation / Account manipulation
@@ -392,16 +394,16 @@ class MitreMapper:
         # Defense Evasion: Log cleared & Firewall disabled & Masquerading
         if "windows_log_cleared" in event or "log cleared" in desc or "audit log cleared" in desc:
             return "T1070.001"
-        if "host_firewall_disabled" in event or "firewall is disabled" in desc or "firewall disabled" in desc:
+        if "host_firewall_disabled" in event or "firewall is disabled" in desc or "firewall disabled" in desc or "advfirewall" in desc or ("firewall" in desc and ("state off" in desc or "disable" in desc or "-enabled false" in desc)):
             return "T1562.001"
         if "masqueraded_process" in event or "masquerad" in desc:
             return "T1036"
 
-        # Network discovery / Scan / Open ports (requires explicit scan context, avoiding generic substring 'scan')
-        if "network_scan" in event or "port_scan" in event or "insecure_listening_port" in event:
+        # Network discovery / Active Scan (requires explicit scan context, distinct from passive listening port posture)
+        if "network_scan" in event or "port_scan" in event:
             return "T1046"
         if ("port scan" in desc or "network scan" in desc or "ip sweep" in desc or
-                "port sweep" in desc or "listening port" in desc or
+                "port sweep" in desc or
                 bool(re.search(r"\b(syn|fin|xmas|ack)\s+scan\b", desc))):
             return "T1046"
 

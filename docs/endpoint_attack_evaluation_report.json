@@ -11,7 +11,11 @@
     "specificity": 1.0,
     "f1_score": 1.0,
     "false_positive_rate": 0.0,
-    "accuracy": 1.0
+    "accuracy": 1.0,
+    "mitre_technique_match_accuracy": 1.0,
+    "mitre_technique_eval_count": 12,
+    "mitre_technique_matches": 12,
+    "mitre_technique_mismatches": []
   },
   "detailed_results": [
     {
@@ -45,13 +49,13 @@
       "attack_phase": "Execution",
       "is_malicious": true,
       "detected": true,
-      "risk_score": 65,
-      "detected_technique": "T1059",
+      "risk_score": 75,
+      "detected_technique": "T1059.001",
       "expected_technique": "T1059.001",
-      "technique_match": false,
+      "technique_match": true,
       "event_type": "windows_suspicious_process",
-      "description": "[Event 4688] Windows Process Created (User: jdoe)",
-      "correct": false
+      "description": "[Event 4688] Process Created: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe - CommandLine: powershell.exe -nop -w hidden -enc JABjAGwAaQBlAG4AdAAgAD0AIABOAGUAdwAtAE8AYgBqAGUAYwB0... (User: jdoe)",
+      "correct": true
     },
     {
       "scenario_id": "attack_04_audit_log_cleared",
@@ -72,12 +76,12 @@
       "is_malicious": true,
       "detected": true,
       "risk_score": 75,
-      "detected_technique": "T1059",
+      "detected_technique": "T1562.001",
       "expected_technique": "T1562.001",
-      "technique_match": false,
+      "technique_match": true,
       "event_type": "windows_suspicious_process",
-      "description": "[Event 4688] Windows Process Created (User: Administrator)",
-      "correct": false
+      "description": "[Event 4688] Process Created: C:\\Windows\\System32\\netsh.exe - CommandLine: netsh advfirewall set allprofiles state off (User: Administrator)",
+      "correct": true
     },
     {
       "scenario_id": "attack_06_mimikatz_lsass_dump",
@@ -149,11 +153,11 @@
       "attack_phase": "Command and Control",
       "is_malicious": true,
       "detected": true,
-      "risk_score": 30,
+      "risk_score": 70,
       "detected_technique": "T1071.004",
       "expected_technique": "T1071.004",
       "technique_match": true,
-      "event_type": "sysmon_dns_query",
+      "event_type": "sysmon_suspicious_dns",
       "description": "[Sysmon Event 22] DNS Query: beacon-c2-stage.dynu.net by C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "correct": true
     },
@@ -180,7 +184,7 @@
       "expected_technique": null,
       "technique_match": true,
       "event_type": "windows_process_creation",
-      "description": "[Event 4688] Windows Process Created (User: SYSTEM)",
+      "description": "[Event 4688] Process Created: C:\\Windows\\WinSxS\\amd64_microsoft-windows-servicingstack_...\\TiWorker.exe - CommandLine: TiWorker.exe -Embedding (Parent: C:\\Windows\\System32\\TrustedInstaller.exe) (User: SYSTEM)",
       "correct": true
     },
     {
@@ -193,7 +197,7 @@
       "expected_technique": null,
       "technique_match": true,
       "event_type": "windows_process_creation",
-      "description": "[Event 4688] Windows Process Created (User: jdoe)",
+      "description": "[Event 4688] Process Created: C:\\Windows\\System32\\msiexec.exe - CommandLine: msiexec.exe /i C:\\Installers\\EnterpriseApp.msi /qn (Parent: C:\\Windows\\explorer.exe) (User: jdoe)",
       "correct": true
     },
     {
@@ -206,7 +210,7 @@
       "expected_technique": null,
       "technique_match": true,
       "event_type": "windows_process_creation",
-      "description": "[Event 4688] Windows Process Created (User: jdoe)",
+      "description": "[Event 4688] Process Created: C:\\Python312\\python.exe - CommandLine: python.exe -m pytest tests/ -v (Parent: C:\\Users\\jdoe\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe) (User: jdoe)",
       "correct": true
     },
     {
@@ -219,7 +223,7 @@
       "expected_technique": null,
       "technique_match": true,
       "event_type": "windows_process_creation",
-      "description": "[Event 4688] Windows Process Created (User: SYSTEM)",
+      "description": "[Event 4688] Process Created: C:\\Windows\\System32\\robocopy.exe - CommandLine: robocopy.exe C:\\Users\\Public D:\\Backups /E /ZB /R:1 /W:1 (Parent: C:\\Windows\\System32\\taskeng.exe) (User: SYSTEM)",
       "correct": true
     },
     {
@@ -228,11 +232,11 @@
       "is_malicious": false,
       "detected": false,
       "risk_score": 15,
-      "detected_technique": "T1078",
+      "detected_technique": null,
       "expected_technique": null,
       "technique_match": true,
       "event_type": "windows_successful_logon",
-      "description": "[Event 4624] Windows Successful Logon (User: jdoe)",
+      "description": "[Event 4624] Windows Interactive Console Logon (User: jdoe, LogonType: 2)",
       "correct": true
     },
     {
@@ -241,7 +245,7 @@
       "is_malicious": false,
       "detected": false,
       "risk_score": 20,
-      "detected_technique": "T1071.004",
+      "detected_technique": null,
       "expected_technique": null,
       "technique_match": true,
       "event_type": "sysmon_dns_query",

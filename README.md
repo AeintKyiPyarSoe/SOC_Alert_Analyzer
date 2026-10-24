@@ -2,13 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-275%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-292%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Coverage](https://img.shields.io/badge/coverage-88%25%20(Overall)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.2.9-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.10-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5%20%7C%20SPDX-blue.svg)](sbom.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -128,9 +128,9 @@ The behavioral detection engine is empirically evaluated using both development 
    Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from the [Latest Release](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
 
 2. **Verify Cryptographic SHA-256 Integrity**:
-   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (54,097,437 bytes) is:
+   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (54,101,860 bytes) is:
    ```text
-   c13e2343b76590c5b1ad40b94db321c5ae04f0e95ac9017b64a7186d68eaa9b6  SOC_Alert_Analyzer.exe
+   a01a3d1700091e705b80961142e6bdfb518f8c56599e97339db73eb2cde315eb  SOC_Alert_Analyzer.exe
    ```
 
    * **Method 1: Windows PowerShell**
@@ -173,15 +173,18 @@ cd SOC_Alert_Analyzer
 # 2. Build and launch containers (secure defaults out of the box)
 docker compose up -d --build
 ```
-Navigate to `http://localhost:8000`.
+Navigate to `http://127.0.0.1:8000`.
 
+* **Loopback Network Isolation**: Web port is explicitly bound to loopback (`127.0.0.1:8000:8000`) rather than `0.0.0.0:8000`, preventing unintended exposure to the local area network during development.
+* **Persistent Credential & Data Storage**: Container mounts a persistent named volume (`soc_data:/app/data`) with `DATA_DIR=/app/data`. Auto-generated credentials (`.auth_credentials`) and database state survive container restarts and image updates.
 * **Production Security Guards**:
   * In development mode, the container auto-generates instance-unique cryptographic keys in `.auth_credentials` rather than using static shared credentials.
-  * In production mode (`ENVIRONMENT=production`), the application strictly enforces non-default, high-entropy secrets (≥ 32 characters) and fails fast with `RuntimeError` if known default or placeholder keys are detected.
-  * 28 regression tests in `tests/test_production_security_guards.py` verify that default keys cannot boot in production.
-* **Hardened Security**: The application runs under an unprivileged user (`socuser:socgroup`). PostgreSQL is restricted to the internal Docker bridge network (`soc_internal_net`).
+  * In production mode (`ENVIRONMENT=production`), the application strictly enforces non-default, high-entropy secrets (≥ 32 characters for `SECRET_KEY`, ≥ 16 characters for `ADMIN_API_KEY`, ≥ 12 characters for `POSTGRES_PASSWORD`), failing fast with `RuntimeError` if known default or placeholder keys are detected.
+  * 35 regression tests in `tests/test_production_security_guards.py` and `tests/test_docker_security_config.py` verify that default keys and exposed port mappings cannot boot in production.
+* **Hardened Security & Non-Root Execution**: The application runs under an unprivileged user (`socuser:socgroup`). PostgreSQL is restricted to the internal Docker bridge network (`soc_internal_net`) with no published host ports.
 * **Automated Healthchecks**: Both `db` and `web` services feature integrated healthchecks to ensure reliable orchestration.
-* **Volume Mounts**: The `sample_alerts/` directory is mounted read-only (`:ro`) into the container so analysts can test immediately without live API keys.
+* **Sample Data Volume Mounts**: The `sample_alerts/` directory is mounted read-only (`:ro`) into the container so analysts can test immediately without live API keys.
+* **Container Monitoring Boundaries**: Note that running the host sensor inside an isolated container evaluates the container namespace only. To inspect physical workstation processes, network sockets, and event logs, run the native desktop executable or ingest Sysmon/Windows Event logs directly into the analyzer.
 
 ### Option C: Local Python Development
 
@@ -212,9 +215,9 @@ Open your browser to `http://127.0.0.1:8000`.
 ## 🔒 Reproducible Builds & Software Bill of Materials (SBOM)
 
 SOC Alert Analyzer provides automated supply-chain security artifacts conforming to international standards:
-* **Dependency Lockfile**: [`requirements.lock`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/requirements.lock) pins exact cryptographic package versions across the entire stack.
-* **CycloneDX SBOM**: [`sbom.json`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/sbom.json) provides CycloneDX v1.5 standard JSON inventory with package URLs (PURLs).
-* **SPDX SBOM**: [`sbom.spdx.json`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/sbom.spdx.json) provides SPDX v2.3 compliant machine-readable Bill of Materials.
+* **Dependency Lockfile**: [`requirements.lock`](requirements.lock) pins exact cryptographic package versions across the entire stack.
+* **CycloneDX SBOM**: [`sbom.json`](sbom.json) provides CycloneDX v1.5 standard JSON inventory with package URLs (PURLs).
+* **SPDX SBOM**: [`sbom.spdx.json`](sbom.spdx.json) provides SPDX v2.3 compliant machine-readable Bill of Materials.
 * **Re-generation Script**:
   ```bash
   python scripts/generate_sbom.py
@@ -234,24 +237,30 @@ SOC Alert Analyzer validates detection fidelity across two empirical benchmarks:
    ```bash
    python scripts/evaluate_endpoint_attacks.py
    ```
-   * Evaluates Certutil LOLBINs, Mshta proxy execution, Obfuscated PowerShell, Audit Log Clearing, Firewall Disablement, Mimikatz LSASS access, Registry Run Key persistence, Malicious Service installation, Admin group manipulation, SMB admin share probes, and C2 DNS queries alongside difficult benign administrator workflows.
-   * Results: **100% Precision, 100% Recall, 0 False Positives**. Report saved in [`docs/endpoint_attack_evaluation_report.json`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/docs/endpoint_attack_evaluation_report.json).
+   * Evaluates Certutil LOLBINs (`T1105`), Mshta proxy execution (`T1218`), Obfuscated PowerShell (`T1059.001`), Audit Log Clearing (`T1070.001`), Firewall Disablement (`T1562.001`), Mimikatz LSASS access (`T1003.001`), Registry Run Key persistence (`T1547.001`), Malicious Service installation (`T1543.003`), Admin group manipulation (`T1098`), SMB admin share probes (`T1021.002`), and C2 DNS queries (`T1071.004`) alongside difficult benign administrator workflows.
+   * **Benchmark Ground-Truth Independence**: Predictions are decoupled entirely from test labels (`scenario.is_malicious` and `expected_technique`). Classification relies strictly on telemetry parsing, detection rules, and production risk engines.
+   * Results: **100% Precision, 100% Recall, 0 False Positives, 100% ATT&CK Technique Accuracy**. Report saved in [`docs/endpoint_attack_evaluation_report.json`](docs/endpoint_attack_evaluation_report.json).
 
 ---
 
 ## 🌐 Network Exposure & Reachability Assessment
 
-The host security sensor differentiates raw socket listening states from confirmed network reachability:
-* **`LOOPBACK_ONLY`**: Bound strictly to `127.0.0.1` / `::1`. Inaccessible to external or local network hosts.
-* **`LAN_ACCESSIBLE`**: Bound to `0.0.0.0` or private RFC 1918 addresses on active LAN adapters. Reachable only within the local subnet.
-* **`INTERNET_EXPOSED`**: Bound to wildcard with an active public routable IPv4/IPv6 address. Confirmed public network reachability.
-* **Firewall Mitigation**: Cross-references host firewall status (`FILTERED` vs `UNFILTERED_EXPOSED`).
+The host security sensor provides passive, non-intrusive network exposure analysis:
+* **Granular Reachability Classification**:
+  * **`LOOPBACK_ONLY`**: Bound strictly to `127.0.0.1` / `::1`. Inaccessible to external or local network hosts.
+  * **`LAN_ACCESSIBLE`**: Bound to `0.0.0.0` or private RFC 1918 addresses on active LAN adapters. Reachable only within the local subnet.
+  * **`INTERNET_EXPOSED`**: Bound to wildcard with an active public routable IPv4/IPv6 address. Confirmed public network reachability.
+  * **`HOST_ISOLATED`**: Bound to wildcard with no active non-loopback network adapters.
+* **Passive Posture & Firewall Rule Inspection**: Cross-references local firewall rule state (`RULE_ALLOWED`, `RULE_BLOCKED`, `SERVICE_ENABLED_DEFAULT_BLOCK`, `UNKNOWN`) without launching active or unauthorized port scans.
+* **Confidence Indicators**: Findings include explicit confidence ratings (`HIGH`, `MEDIUM`, `LOW`) and reachability inference metadata (`reachability_type="INFERRED_PASSIVE"`).
+* **Defensive ATT&CK Alignment**: Local listening port posture findings are disassociated from ATT&CK `T1046` (Adversary Network Service Discovery), correctly identifying listening sockets as host exposure rather than adversary scanning.
+* **Tailored High-Risk Port Guidance**: Insecure listeners on critical ports (e.g., SMB port 445 bound to wildcard) receive tailored remediation guidance highlighting lateral movement risks and recommending binding to loopback or blocking via firewall.
 
 ---
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains an automated pytest test suite (**275 passing tests**, 100% pass rate, 88% overall code coverage with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, risk calculation, and production guard logic:
+The repository maintains an automated pytest test suite (**292 passing tests**, 100% pass rate, 88% overall code coverage with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, risk calculation, and production guard logic:
 
 ```powershell
 python -m pytest -v --cov=app --cov-report=term-missing
@@ -278,6 +287,19 @@ tests/test_origin_cors_validation.py::test_origin_validation_negative_malformed_
 tests/test_session_lifecycle.py::test_session_lifecycle_create_get_revoke PASSED
 tests/test_session_lifecycle.py::test_atomic_session_rotation PASSED
 tests/test_session_lifecycle.py::test_login_rate_limiting_and_pruning PASSED
+tests/test_docker_security_config.py::test_docker_compose_web_port_bound_to_loopback PASSED
+tests/test_docker_security_config.py::test_docker_compose_db_port_not_exposed_to_host PASSED
+tests/test_docker_security_config.py::test_docker_compose_volume_mounts_configured PASSED
+tests/test_docker_security_config.py::test_dockerfile_creates_and_uses_non_root_user PASSED
+tests/test_docker_security_config.py::test_docker_credentials_persist_across_restarts PASSED
+tests/test_endpoint_attack_evaluation.py::test_endpoint_attack_evaluation_benchmark PASSED
+tests/test_endpoint_attack_evaluation.py::test_ground_truth_label_flipping_independence PASSED
+tests/test_endpoint_attack_evaluation.py::test_expected_technique_independence PASSED
+tests/test_network_reachability.py::test_assess_socket_reachability_passive_confidence PASSED
+tests/test_network_reachability.py::test_audit_network_sockets_dissociated_from_t1046 PASSED
+tests/test_sbom_and_lockfile.py::test_sbom_and_lockfile_component_count_parity PASSED
+============================ 292 passed in 56.56s =============================
+```
 tests/test_session_lifecycle.py::test_websocket_ticket_lifecycle_and_replay_defense PASSED
 tests/test_detection_resilience.py::test_risk_engine_nan_inf_handling PASSED
 tests/test_detection_resilience.py::test_suricata_parser_anti_false_positive PASSED
@@ -345,7 +367,7 @@ tests/test_mitre_visualization_and_samples.py::test_mitre_report_api_endpoints P
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
 ├── scripts/                  # Detection evaluation & utility automation scripts
-├── tests/                    # 230 automated pytest tests covering all subsystems (86% on Linux, 88% on Windows, >=85% CI floor)
+├── tests/                    # 292 automated pytest tests covering all subsystems (88% code coverage, >=85% CI floor)
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file

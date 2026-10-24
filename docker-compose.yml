@@ -50,11 +50,15 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       ALLOW_INSECURE_AUTH_DISABLED: ${ALLOW_INSECURE_AUTH_DISABLED:-false}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      DATA_DIR: ${DATA_DIR:-/app/data}
     ports:
-      - "8000:8000"
+      # Security: Default to loopback publishing (127.0.0.1) to prevent unintended LAN exposure.
+      # Expose externally (e.g. "8000:8000") only behind an authenticated reverse proxy or TLS terminating gateway.
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./sample_alerts:/app/sample_alerts:ro
       - ./sample_data:/app/sample_data:ro
+      - soc_data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/stream/status || exit 1"]
       interval: 10s
@@ -70,3 +74,4 @@ networks:
 
 volumes:
   postgres_data:
+  soc_data:

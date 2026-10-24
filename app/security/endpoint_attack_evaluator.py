@@ -421,15 +421,19 @@ class EndpointAttackEvaluator:
         # 2. Normalize event into canonical Alert structure
         normalized = AlertNormalizer.normalize(parsed_event)
 
-        # 3. Classify threat: Risk score >= 40 indicates detected threat
+        # 3. Classify threat independently of ground truth labels
+        # Strictly uses parsed telemetry, risk scores, and production detection outputs.
+        # NEVER uses scenario.is_malicious, expected_technique, or expected_result.
         risk_score = normalized.get("risk_score", 0)
         mitre_tech = normalized.get("mitre_technique")
-        is_threat = (risk_score >= 40) or (mitre_tech is not None and scenario.is_malicious)
+        is_threat = bool((risk_score >= 40) or (mitre_tech is not None))
 
-        # Check MITRE technique match if specified
+        # 4. Independent MITRE technique evaluation against ground truth
         technique_match = True
-        if scenario.expected_technique and scenario.is_malicious:
+        if scenario.expected_technique:
             technique_match = (mitre_tech == scenario.expected_technique)
+        elif not scenario.is_malicious:
+            technique_match = (mitre_tech is None)
 
         return {
             "scenario_id": scenario.scenario_id,
@@ -447,13 +451,16 @@ class EndpointAttackEvaluator:
 
     def run_benchmark(self, scenarios: Optional[List[EndpointAttackScenario]] = None) -> Dict[str, Any]:
         """Runs the full endpoint attack evaluation benchmark across all scenarios."""
-        target_scenarios = scenarios or ENDPOINT_SCENARIOS
+        target_scenarios = scenarios if scenarios is not None else ENDPOINT_SCENARIOS
 
         results = []
         tp = 0
         fp = 0
         tn = 0
         fn = 0
+        technique_matches = 0
+        technique_eval_count = 0
+        technique_mismatches = []
 
         for sc in target_scenarios:
             res = self.evaluate_scenario(sc)
@@ -471,6 +478,17 @@ class EndpointAttackEvaluator:
             elif actual_pos and not pred_pos:
                 fn += 1
 
+            if sc.expected_technique:
+                technique_eval_count += 1
+                if res["technique_match"]:
+                    technique_matches += 1
+                else:
+                    technique_mismatches.append({
+                        "scenario_id": sc.scenario_id,
+                        "expected_technique": sc.expected_technique,
+                        "detected_technique": res["detected_technique"]
+                    })
+
         total = len(target_scenarios)
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -478,6 +496,7 @@ class EndpointAttackEvaluator:
         f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
         accuracy = (tp + tn) / total if total > 0 else 0.0
+        tech_accuracy = technique_matches / technique_eval_count if technique_eval_count > 0 else 1.0
 
         return {
             "benchmark_version": BENCHMARK_VERSION,
@@ -492,7 +511,11 @@ class EndpointAttackEvaluator:
                 "specificity": specificity,
                 "f1_score": f1,
                 "false_positive_rate": fpr,
-                "accuracy": accuracy
+                "accuracy": accuracy,
+                "mitre_technique_match_accuracy": tech_accuracy,
+                "mitre_technique_eval_count": technique_eval_count,
+                "mitre_technique_matches": technique_matches,
+                "mitre_technique_mismatches": technique_mismatches
             },
             "detailed_results": results
         }

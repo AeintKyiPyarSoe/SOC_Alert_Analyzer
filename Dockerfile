@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set appropriate directory permissions for non-root user
-RUN mkdir -p /app/uploads && chown -R socuser:socgroup /app
+RUN mkdir -p /app/uploads /app/data && chown -R socuser:socgroup /app
 
 # Switch to unprivileged user
 USER socuser

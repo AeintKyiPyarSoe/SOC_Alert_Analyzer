@@ -474,10 +474,42 @@ class HostSecuritySensor:
                 pass
         return None
 
+    def inspect_port_firewall_rule(self, port: int, protocol: str = "TCP") -> Dict[str, Any]:
+        """
+        Inspects specific local host firewall rules for the designated port and protocol.
+        Returns rule_status ("FILTERED_RULE_FOUND", "ALLOW_RULE_FOUND", "UNKNOWN") and confidence.
+        Passive check; falls back safely to UNKNOWN if permissions are insufficient.
+        """
+        if self.os_type == "Windows":
+            try:
+                res = subprocess.run(
+                    ["netsh", "advfirewall", "firewall", "show", "rule", "name=all", "dir=in"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                output = res.stdout or ""
+                port_str = str(port)
+                if re.search(rf"LocalPort:\s*([0-9,\-\s]*\b{port_str}\b)", output, re.IGNORECASE):
+                    return {"rule_status": "FILTERED_RULE_FOUND", "confidence": "HIGH", "detail": f"Firewall rule detected matching port {port}."}
+            except Exception:
+                pass
+        elif self.os_type == "Linux":
+            try:
+                res = subprocess.run(["iptables", "-L", "-n"], capture_output=True, text=True, timeout=2)
+                out = res.stdout or ""
+                if f":{port} " in out or f"dpt:{port}" in out:
+                    return {"rule_status": "FILTERED_RULE_FOUND", "confidence": "HIGH", "detail": f"iptables rule detected for port {port}."}
+            except Exception:
+                pass
+
+        return {"rule_status": "UNKNOWN", "confidence": "LOW", "detail": "Specific firewall rule not found or indeterminate; relying on global firewall posture."}
+
     def assess_socket_reachability(self, ip: str, port: int) -> Dict[str, Any]:
         """
         Distinguishes listening socket binding from confirmed network reachability.
-        Evaluates interface assignments, routability, and firewall posture.
+        Evaluates interface assignments, routability, and firewall posture passively.
+        Never executes active external network scans.
         """
         ip_clean = (ip or "").strip()
         is_loopback = ip_clean in ("127.0.0.1", "::1", "localhost")
@@ -496,9 +528,9 @@ class HostSecuritySensor:
                 if iface_stat and not iface_stat.isup:
                     continue
                 for a in addr_list:
-                    if a.family == socket.AF_INET:
-                        addr_str = a.address
-                        if not addr_str.startswith("127."):
+                    if a.family in (socket.AF_INET, getattr(socket, "AF_INET6", -1)):
+                        addr_str = str(a.address).split("%")[0]
+                        if not addr_str.startswith("127.") and addr_str not in ("::1", "localhost"):
                             active_interfaces.append(addr_str)
                             if IPClassifier.is_public_ip(addr_str):
                                 has_public_ip = True
@@ -507,55 +539,88 @@ class HostSecuritySensor:
         except Exception:
             pass
 
-        # Check firewall mitigation
+        # Inspect firewall posture & specific rule status
         fw_active = self.is_firewall_enabled()
-        if fw_active is True:
-            fw_mitigation = "FILTERED"
-        elif fw_active is False:
+        rule_info = self.inspect_port_firewall_rule(port)
+        fw_rule_status = rule_info.get("rule_status", "UNKNOWN")
+
+        if fw_active is False:
             fw_mitigation = "UNFILTERED_EXPOSED"
+            fw_confidence = "HIGH"
+        elif fw_active is True:
+            if fw_rule_status == "FILTERED_RULE_FOUND":
+                fw_mitigation = "FILTERED"
+                fw_confidence = "HIGH"
+            else:
+                fw_mitigation = "FILTERED"  # Default global inbound filtering policy
+                fw_confidence = "MEDIUM"
         else:
             fw_mitigation = "UNKNOWN"
+            fw_confidence = "LOW"
+
+        reachability_type = "INFERRED_PASSIVE"
+        defensive_rec = f"Audit listening process and restrict binding to loopback (127.0.0.1) if network access is not required."
 
         if is_loopback:
             reachability = "LOOPBACK_ONLY"
             exposure_tier = "LOW"
+            confidence = "HIGH"
             summary = f"Socket bound strictly to loopback ({ip_clean}:{port}). Inaccessible to external or local network hosts."
+            defensive_rec = "No network action required; socket is isolated to local host."
         elif is_wildcard:
             if has_public_ip:
                 reachability = "INTERNET_EXPOSED"
                 exposure_tier = "CRITICAL" if fw_mitigation != "FILTERED" else "HIGH"
-                summary = f"Socket bound to wildcard ({ip_clean}:{port}) with confirmed public interface reachability ({active_interfaces}). Firewall: {fw_mitigation}."
+                confidence = "MEDIUM"
+                summary = f"Socket bound to wildcard ({ip_clean}:{port}) with potential public interface exposure ({active_interfaces}). Inferred reachability (passive); Firewall: {fw_mitigation}."
+                defensive_rec = f"Verify whether port {port} must be exposed. Apply perimeter/host firewall block rules or bind strictly to a private management interface."
             elif has_lan_ip:
                 reachability = "LAN_ACCESSIBLE"
                 exposure_tier = "HIGH" if fw_mitigation != "FILTERED" else "MEDIUM"
+                confidence = "HIGH" if fw_confidence != "LOW" else "MEDIUM"
                 summary = f"Socket bound to wildcard ({ip_clean}:{port}) accessible to local subnet via {active_interfaces}. Firewall: {fw_mitigation}."
+                defensive_rec = f"Restrict port {port} access to authorized administrative subnets via local firewall rule."
             else:
                 reachability = "HOST_ISOLATED"
                 exposure_tier = "LOW"
+                confidence = "HIGH"
                 summary = f"Socket bound to wildcard ({ip_clean}:{port}) but no active non-loopback network interfaces detected."
+                defensive_rec = "No immediate network risk detected; host has no active network adapters."
         else:
             if IPClassifier.is_public_ip(ip_clean):
                 reachability = "INTERNET_EXPOSED"
                 exposure_tier = "CRITICAL" if fw_mitigation != "FILTERED" else "HIGH"
-                summary = f"Socket bound directly to public IP ({ip_clean}:{port}). Confirmed internet-routable reachability. Firewall: {fw_mitigation}."
+                confidence = "MEDIUM"
+                summary = f"Socket bound directly to public IP ({ip_clean}:{port}). Potential internet-routable reachability (passive assessment). Firewall: {fw_mitigation}."
+                defensive_rec = f"Ensure perimeter firewalls and local rules explicitly restrict port {port} to authorized source IPs."
             elif not is_loopback:
                 reachability = "LAN_ACCESSIBLE"
                 exposure_tier = "HIGH" if fw_mitigation != "FILTERED" else "MEDIUM"
+                confidence = "HIGH" if fw_confidence != "LOW" else "MEDIUM"
                 summary = f"Socket bound to local subnet IP ({ip_clean}:{port}). Reachable within private LAN. Firewall: {fw_mitigation}."
+                defensive_rec = f"Ensure port {port} traffic is restricted to trusted internal workstations."
             else:
                 reachability = "LOOPBACK_ONLY"
                 exposure_tier = "LOW"
+                confidence = "HIGH"
                 summary = f"Socket bound to {ip_clean}:{port} (Loopback only)."
+
+        if port == 445:
+            defensive_rec = "SMB port 445 exposure posture: restrict to dedicated domain controller / file server roles; block TCP 445 at perimeter and inter-subnet firewalls to prevent lateral movement (T1021.002)."
 
         return {
             "binding": ip_clean or "0.0.0.0",  # nosec B104
             "port": port,
             "binding_type": "LOOPBACK" if is_loopback else ("WILDCARD" if is_wildcard else "SPECIFIC_INTERFACE"),
             "reachability": reachability,
+            "reachability_type": reachability_type,
             "exposure_tier": exposure_tier,
+            "confidence": confidence,
             "firewall_mitigation": fw_mitigation,
+            "firewall_rule_status": fw_rule_status,
             "active_interfaces": active_interfaces,
             "has_public_reachability": (reachability == "INTERNET_EXPOSED"),
+            "defensive_recommendation": defensive_rec,
             "summary": summary
         }
 
@@ -583,7 +648,9 @@ class HostSecuritySensor:
                             try:
                                 proc_name = psutil.Process(conn.pid).name()
                             except Exception:
-                                pass
+                                proc_name = "Unknown (Inaccessible)"
+                        else:
+                            proc_name = "System / Inaccessible"
 
                         # Context filter: Allowlist developer runtime processes listening on dev ports
                         proc_lower = proc_name.lower()
@@ -594,23 +661,33 @@ class HostSecuritySensor:
 
                         sig = f"listen_{port}_{conn.pid}"
                         if not self._is_signature_seen_recent(sig):
+                            reach_reach = reach.get("reachability", "UNKNOWN")
+                            reach_tier = reach.get("exposure_tier", "LOW")
+                            reach_fw = reach.get("firewall_mitigation", "UNKNOWN")
+                            reach_conf = reach.get("confidence", "MEDIUM")
+                            reach_type = reach.get("reachability_type", "INFERRED_PASSIVE")
+                            reach_rec = reach.get("defensive_recommendation", "Audit socket exposure and bind to localhost if external access is not required.")
+                            reach_summary = reach.get("summary", "")
 
                             events.append({
                                 "source_type": "Host_Network_Sensor",
                                 "telemetry_origin": "HOST_TELEMETRY",
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "event_type": "insecure_listening_port",
-                                "mitre_technique": "T1046",
-                                "description": f"Exposed Listener: {service_name} on {ip}:{port} [{reach['reachability']}] (Exposure: {reach['exposure_tier']}, FW: {reach['firewall_mitigation']}) by process '{proc_name}' (PID: {conn.pid})",
+                                "mitre_technique": None,  # Passive posture finding; not adversary discovery
+                                "description": f"Host Listener Posture: {service_name} on {ip}:{port} [{reach_reach}] (Exposure: {reach_tier}, FW: {reach_fw}, Conf: {reach_conf}) by process '{proc_name}' (PID: {conn.pid})",
                                 "source_ip": "0.0.0.0",  # nosec: B104
                                 "destination_ip": None,
                                 "source_port": port,
                                 "destination_port": None,
                                 "username": None,
-                                "reachability": reach["reachability"],
-                                "exposure_tier": reach["exposure_tier"],
-                                "firewall_mitigation": reach["firewall_mitigation"],
-                                "raw_log": f"Status: LISTEN | LocalAddr: {ip}:{port} | Process: {proc_name} (PID {conn.pid}) | Reachability: {reach['reachability']} | Exposure: {reach['exposure_tier']} | FW: {reach['firewall_mitigation']} | Detail: {reach['summary']} | Reason: {reason}"
+                                "reachability": reach_reach,
+                                "reachability_type": reach_type,
+                                "exposure_tier": reach_tier,
+                                "confidence": reach_conf,
+                                "firewall_mitigation": reach_fw,
+                                "defensive_recommendation": reach_rec,
+                                "raw_log": f"Status: LISTEN | LocalAddr: {ip}:{port} | Process: {proc_name} (PID {conn.pid}) | Reachability: {reach_reach} | ReachabilityType: {reach_type} | Exposure: {reach_tier} | FW: {reach_fw} | Confidence: {reach_conf} | Detail: {reach_summary} | Reason: {reason} | Guidance: {reach_rec}"
                             })
 
                 elif conn.status == "ESTABLISHED" and conn.raddr:

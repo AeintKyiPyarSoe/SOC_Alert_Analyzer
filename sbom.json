@@ -2,21 +2,21 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:7ad7f2ee-9378-4399-9d14-24f54a91e981",
+  "serialNumber": "urn:uuid:826dfc66-0e50-4f99-87a8-efba78a5e518",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-24T18:39:50.253071+00:00",
+    "timestamp": "2026-10-24T19:35:35.696389+00:00",
     "tools": [
       {
         "vendor": "SOC Alert Analyzer Project",
         "name": "SBOM Generator",
-        "version": "1.0.0"
+        "version": "1.1.0"
       }
     ],
     "component": {
       "type": "application",
       "name": "SOC_Alert_Analyzer",
-      "version": "1.2.9",
+      "version": "1.2.10",
       "description": "Defensive blue-team SOC alert triage and host security audit workbench",
       "licenses": [
         {
@@ -25,70 +25,10 @@
           }
         }
       ],
-      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.9"
+      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.10"
     }
   },
   "components": [
-    {
-      "type": "library",
-      "name": "fastapi",
-      "version": "0.141.1",
-      "purl": "pkg:pypi/fastapi@0.141.1",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "starlette",
-      "version": "1.6.0",
-      "purl": "pkg:pypi/starlette@1.6.0",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "pydantic",
-      "version": "2.13.4",
-      "purl": "pkg:pypi/pydantic@2.13.4",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "pydantic-core",
-      "version": "2.46.4",
-      "purl": "pkg:pypi/pydantic-core@2.46.4",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "uvicorn",
-      "version": "0.52.4",
-      "purl": "pkg:pypi/uvicorn@0.52.4",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "sqlalchemy",
-      "version": "2.0.52",
-      "purl": "pkg:pypi/sqlalchemy@2.0.52",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
     {
       "type": "library",
       "name": "alembic",
@@ -101,9 +41,29 @@
     },
     {
       "type": "library",
-      "name": "psutil",
-      "version": "7.2.2",
-      "purl": "pkg:pypi/psutil@7.2.2",
+      "name": "anyio",
+      "version": "4.14.2",
+      "purl": "pkg:pypi/anyio@4.14.2",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "certifi",
+      "version": "2026.7.22",
+      "purl": "pkg:pypi/certifi@2026.7.22",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "click",
+      "version": "8.4.2",
+      "purl": "pkg:pypi/click@8.4.2",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -114,6 +74,56 @@
       "name": "defusedxml",
       "version": "0.7.1",
       "purl": "pkg:pypi/defusedxml@0.7.1",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "fastapi",
+      "version": "0.141.1",
+      "purl": "pkg:pypi/fastapi@0.141.1",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "h11",
+      "version": "0.16.0",
+      "purl": "pkg:pypi/h11@0.16.0",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "httpcore",
+      "version": "1.0.9",
+      "purl": "pkg:pypi/httpcore@1.0.9",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "httpx",
+      "version": "0.28.1",
+      "purl": "pkg:pypi/httpx@0.28.1",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "idna",
+      "version": "3.19",
+      "purl": "pkg:pypi/idna@3.19",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -141,6 +151,56 @@
     },
     {
       "type": "library",
+      "name": "psutil",
+      "version": "7.2.2",
+      "purl": "pkg:pypi/psutil@7.2.2",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "psycopg2-binary",
+      "version": "2.9.10",
+      "purl": "pkg:pypi/psycopg2-binary@2.9.10",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "pydantic",
+      "version": "2.13.4",
+      "purl": "pkg:pypi/pydantic@2.13.4",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "pydantic-core",
+      "version": "2.46.4",
+      "purl": "pkg:pypi/pydantic-core@2.46.4",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "pytest",
+      "version": "9.1.1",
+      "purl": "pkg:pypi/pytest@9.1.1",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
       "name": "python-dotenv",
       "version": "1.2.3",
       "purl": "pkg:pypi/python-dotenv@1.2.3",
@@ -161,36 +221,6 @@
     },
     {
       "type": "library",
-      "name": "httpx",
-      "version": "0.28.1",
-      "purl": "pkg:pypi/httpx@0.28.1",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "httpcore",
-      "version": "1.0.9",
-      "purl": "pkg:pypi/httpcore@1.0.9",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
-      "name": "anyio",
-      "version": "4.14.2",
-      "purl": "pkg:pypi/anyio@4.14.2",
-      "scope": "required",
-      "supplier": {
-        "name": "PyPI Community"
-      }
-    },
-    {
-      "type": "library",
       "name": "sniffio",
       "version": "1.3.1",
       "purl": "pkg:pypi/sniffio@1.3.1",
@@ -201,9 +231,9 @@
     },
     {
       "type": "library",
-      "name": "idna",
-      "version": "3.19",
-      "purl": "pkg:pypi/idna@3.19",
+      "name": "sqlalchemy",
+      "version": "2.0.52",
+      "purl": "pkg:pypi/sqlalchemy@2.0.52",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -211,9 +241,9 @@
     },
     {
       "type": "library",
-      "name": "certifi",
-      "version": "2026.7.22",
-      "purl": "pkg:pypi/certifi@2026.7.22",
+      "name": "starlette",
+      "version": "1.6.0",
+      "purl": "pkg:pypi/starlette@1.6.0",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"
@@ -224,6 +254,16 @@
       "name": "typing-extensions",
       "version": "4.16.0",
       "purl": "pkg:pypi/typing-extensions@4.16.0",
+      "scope": "required",
+      "supplier": {
+        "name": "PyPI Community"
+      }
+    },
+    {
+      "type": "library",
+      "name": "uvicorn",
+      "version": "0.52.4",
+      "purl": "pkg:pypi/uvicorn@0.52.4",
       "scope": "required",
       "supplier": {
         "name": "PyPI Community"

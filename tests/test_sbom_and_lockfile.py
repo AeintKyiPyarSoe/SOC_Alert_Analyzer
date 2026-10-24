@@ -37,6 +37,11 @@ def test_cyclonedx_sbom_valid():
     assert "pydantic" in names
     assert "sqlalchemy" in names
     assert "psutil" in names
+    assert "psycopg2-binary" in names
+
+    # Verify application metadata version alignment
+    import app
+    assert data["metadata"]["component"]["version"] == app.__version__
 
 
 def test_spdx_sbom_valid():
@@ -49,3 +54,20 @@ def test_spdx_sbom_valid():
     assert data.get("spdxVersion") == "SPDX-2.3"
     assert "packages" in data
     assert len(data["packages"]) >= 15
+
+    import app
+    root_pkg = next(p for p in data["packages"] if p["name"] == "SOC_Alert_Analyzer")
+    assert root_pkg["versionInfo"] == app.__version__
+
+
+def test_sbom_and_lockfile_component_count_parity():
+    """Verify that sbom.json and requirements.lock inventory the identical dependency set."""
+    root = Path(__file__).resolve().parent.parent
+    lock_file = root / "requirements.lock"
+    sbom_file = root / "sbom.json"
+
+    lock_lines = [l.split("==")[0].strip() for l in lock_file.read_text(encoding="utf-8").splitlines() if "==" in l and not l.strip().startswith("#")]
+    sbom_data = json.loads(sbom_file.read_text(encoding="utf-8"))
+    sbom_names = [c["name"] for c in sbom_data["components"]]
+
+    assert set(lock_lines) == set(sbom_names), "Lockfile and CycloneDX SBOM must inventory identical packages"

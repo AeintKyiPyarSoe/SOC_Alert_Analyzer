@@ -129,7 +129,20 @@ def test_production_fails_on_insecure_postgres_password(monkeypatch, prohibited_
     monkeypatch.setenv("POSTGRES_DB", "soc_prod_db")
     monkeypatch.setenv("COOKIE_SECURE", "true")
 
-    with pytest.raises(RuntimeError, match="POSTGRES_PASSWORD must be a strong non-default"):
+    with pytest.raises(RuntimeError, match="POSTGRES_PASSWORD must be"):
+        Settings()
+
+
+def test_production_fails_when_postgres_host_has_missing_password(monkeypatch):
+    """Production mode must fail when POSTGRES_HOST is configured without POSTGRES_PASSWORD."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("SECRET_KEY", "production_valid_secure_secret_key_32_bytes_random_hex_abc")
+    monkeypatch.setenv("ADMIN_API_KEY", "admin_secure_production_key_length_32_plus_chars")
+    monkeypatch.setenv("POSTGRES_HOST", "db.prod.internal")
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+
+    with pytest.raises(RuntimeError, match="POSTGRES_PASSWORD must be configured"):
         Settings()
 
 

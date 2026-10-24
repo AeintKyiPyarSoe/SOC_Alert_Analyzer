@@ -124,3 +124,81 @@ def test_audit_network_sockets_enriches_reachability_metadata():
         assert ev["firewall_mitigation"] == "FILTERED"
         assert "LAN_ACCESSIBLE" in ev["description"]
         assert "FW: FILTERED" in ev["description"]
+        assert ev["mitre_technique"] is None  # Posture finding, not adversary T1046 discovery
+
+
+def test_assess_socket_reachability_indeterminate_firewall():
+    """When firewall state or permissions are indeterminate, report UNKNOWN with LOW confidence."""
+    sensor = HostSecuritySensor()
+
+    with patch.object(sensor, "is_firewall_enabled", return_value=None):
+        res = sensor.assess_socket_reachability("192.168.1.10", 445)
+        assert res["firewall_mitigation"] == "UNKNOWN"
+        assert res["reachability"] == "LAN_ACCESSIBLE"
+        assert "SMB port 445 exposure posture" in res["defensive_recommendation"]
+
+
+def test_assess_socket_reachability_ipv6():
+    """IPv6 loopback (::1) and wildcard (::) must be classified accurately."""
+    sensor = HostSecuritySensor()
+
+    res_lo = sensor.assess_socket_reachability("::1", 9000)
+    assert res_lo["reachability"] == "LOOPBACK_ONLY"
+    assert res_lo["binding_type"] == "LOOPBACK"
+    assert res_lo["exposure_tier"] == "LOW"
+
+    mock_addrs = {
+        "eth0": [snicaddr(family=socket.AF_INET6, address="fe80::1%eth0", netmask="ffff:ffff:ffff:ffff::", broadcast=None, ptp=None)]
+    }
+    mock_stats = {"eth0": snicstats(isup=True, duplex=1, speed=1000, mtu=1500, flags="")}
+
+    with patch("psutil.net_if_addrs", return_value=mock_addrs), \
+         patch("psutil.net_if_stats", return_value=mock_stats), \
+         patch.object(sensor, "is_firewall_enabled", return_value=True):
+        res_wc = sensor.assess_socket_reachability("::", 4444)
+        assert res_wc["binding_type"] == "WILDCARD"
+        assert res_wc["reachability"] == "LAN_ACCESSIBLE"
+
+
+def test_audit_network_sockets_dev_process_allowlist():
+    """Legitimate developer processes (python, uvicorn, node, code) on dev ports (8000, 8080) are filtered to reduce FP."""
+    sensor = HostSecuritySensor()
+    MockAddr = namedtuple('MockAddr', ['ip', 'port'])
+    MockConn = namedtuple('MockConn', ['status', 'laddr', 'raddr', 'pid'])
+
+    dev_conn = MockConn(status="LISTEN", laddr=MockAddr(ip="0.0.0.0", port=8000), raddr=None, pid=5555)
+
+    with patch("psutil.net_connections", return_value=[dev_conn]), \
+         patch("psutil.Process") as mock_proc:
+        mock_proc.return_value.name.return_value = "python.exe"
+        events = sensor.audit_network_sockets()
+        assert len(events) == 0  # Allowlisted, 0 FP
+
+
+def test_audit_network_sockets_inaccessible_process():
+    """Listening ports with inaccessible process PID handle gracefully."""
+    sensor = HostSecuritySensor()
+    MockAddr = namedtuple('MockAddr', ['ip', 'port'])
+    MockConn = namedtuple('MockConn', ['status', 'laddr', 'raddr', 'pid'])
+
+    conn = MockConn(status="LISTEN", laddr=MockAddr(ip="0.0.0.0", port=23), raddr=None, pid=None)
+
+    with patch("psutil.net_connections", return_value=[conn]), \
+         patch.object(sensor, "assess_socket_reachability") as mock_assess:
+        mock_assess.return_value = {
+            "binding": "0.0.0.0",
+            "port": 23,
+            "binding_type": "WILDCARD",
+            "reachability": "LAN_ACCESSIBLE",
+            "reachability_type": "INFERRED_PASSIVE",
+            "exposure_tier": "HIGH",
+            "confidence": "HIGH",
+            "firewall_mitigation": "UNFILTERED_EXPOSED",
+            "active_interfaces": ["192.168.1.10"],
+            "has_public_reachability": False,
+            "defensive_recommendation": "Restrict Telnet",
+            "summary": "Telnet listening"
+        }
+        events = sensor.audit_network_sockets()
+        assert len(events) == 1
+        assert "System / Inaccessible" in events[0]["description"]

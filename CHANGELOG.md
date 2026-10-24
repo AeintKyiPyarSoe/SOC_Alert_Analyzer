@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.10] - 2026-10-25
+
+### Added
+- **Decoupled Endpoint Detection Benchmark & Leakage Elimination**:
+  - Completely eliminated ground-truth leakage (`scenario.is_malicious`) from prediction logic in `app/security/endpoint_attack_evaluator.py`. Prediction is determined strictly by parsed telemetry features, risk engine scoring (`risk_score >= 40`), and defensive rules.
+  - Strictly separated threat classification from MITRE ATT&CK technique evaluation.
+  - Corrected ATT&CK technique mappings: Encoded PowerShell maps to `T1059.001` (sub-technique), firewall disablement maps to `T1562.001`, and C2 DNS queries map to `T1071.004` while preserving benign administrator workflows.
+  - Added regression suite (`tests/test_endpoint_attack_evaluation.py`) verifying label-flipping independence, expected-technique independence, empty/malformed dataset resilience, ambiguous telemetry handling, and explicit mismatch reporting.
+  - Added technique match metrics (`mitre_technique_match_accuracy`, `mitre_technique_mismatches`) to `scripts/evaluate_endpoint_attacks.py`.
+- **Passive Network Exposure Accuracy & Firewall Rule Inspection**:
+  - Enhanced `app/security/host_sensor.py` with `inspect_port_firewall_rule` inspecting local Windows Advanced Firewall rules for listening ports (`netsh advfirewall firewall show rule`).
+  - Added explicit confidence ratings (`HIGH`, `MEDIUM`, `LOW`) and reachability classification (`reachability_type="INFERRED_PASSIVE"`).
+  - Disassociated local listening ports from ATT&CK `T1046` (Network Service Scanning), correctly categorizing listening sockets as host attack surface rather than adversary active network scanning.
+  - Added tailored high-risk guidance for SMB port 445 listeners bound to wildcard/LAN interfaces.
+  - Added regression test suite `tests/test_network_reachability.py` covering indeterminate firewall rules, IPv6 listeners (`::1`, `::`), development process filtering, and process access errors.
+- **Docker Compose Loopback Isolation & Volume Persistence**:
+  - Bound web service port in `docker-compose.yml` strictly to loopback (`127.0.0.1:8000:8000`) rather than `0.0.0.0:8000`, preventing unintended LAN exposure during development.
+  - Added persistent named volume `soc_data:/app/data` with `DATA_DIR: ${DATA_DIR:-/app/data}` ensuring auto-generated `.auth_credentials` and SQLite persistence survive container recreation.
+  - Enforced strong PostgreSQL password requirement in production in `app/config.py`.
+  - Added regression suite `tests/test_docker_security_config.py` verifying loopback binding, database network isolation, persistent volume configuration, and non-root execution.
+- **Dynamic SBOM Resolution with PostgreSQL Driver Support**:
+  - Upgraded `scripts/generate_sbom.py` to dynamically inspect installed runtime packages via `importlib.metadata`, explicitly adding `psycopg2-binary==2.9.10` and transitive dependencies.
+  - Regenerated `requirements.lock` (24 packages), CycloneDX v1.5 `sbom.json`, and SPDX v2.3 `sbom.spdx.json` aligned to version `1.2.10`.
+  - Added regression test `tests/test_sbom_and_lockfile.py` asserting lockfile/SBOM parity and PostgreSQL driver presence.
+- **Continuous Integration Pipeline Hardening**:
+  - Integrated `scripts/evaluate_endpoint_attacks.py` into `.github/workflows/ci.yml` and `.github/workflows/release-exe.yml` alongside the behavioral baseline benchmark.
+
+### Changed
+- **Canonical Version Synchronization**: Bumped canonical package version to `v1.2.10` across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` application metadata.
+- **Test Suite Expansion & Coverage**: Expanded automated pytest suite from 275 to **292 passed (100%)** with **88% overall code coverage** (87.69%).
+- **Documentation Link Cleanup**: Removed all Windows local filesystem `file:///C:/...` links from `README.md` and `docs/requirements_specification.md`, replacing them with relative repository links.
+- **Windows Event Parser Contextualization**: Added command-line enrichment to Event 4688 descriptions and interactive console logon detection for Event 4624 (`LogonType: 2`).
+- **Standalone Windows Executable Rebuild**: Rebuilt `dist/SOC_Alert_Analyzer.exe` (54,101,860 bytes) with bundled sample datasets and verified runtime smoke tests on `/api/v1/auth/me`.
+- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `a01a3d1700091e705b80961142e6bdfb518f8c56599e97339db73eb2cde315eb`.
+
+---
+
 ## [1.2.9] - 2026-10-25
 
 ### Added

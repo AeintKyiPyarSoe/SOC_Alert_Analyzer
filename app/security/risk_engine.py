@@ -38,6 +38,7 @@ class RiskEngine:
         "sysmon_process_access": 75,
         "sysmon_registry_event": 60,
         "sysmon_dns_query": 20,
+        "sysmon_suspicious_dns": 60,
         "sysmon_network_connection": 20,
         "windows_special_privileges": 20,
         "windows_ntlm_auth": 20,

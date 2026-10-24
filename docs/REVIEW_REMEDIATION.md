@@ -2,9 +2,9 @@
 
 **Date**: October 25, 2026  
 **Target Repository**: [SOC_Alert_Analyzer](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer)  
-**Release Version**: v1.2.9 (Latest Active Release)  
+**Release Version**: v1.2.10 (Latest Active Release)  
 **Execution Environment**: Local Workspace (Source of Truth)  
-**Final Test Status**: **275 passed, 0 failed (100% passing rate, 88% overall code coverage)**  
+**Final Test Status**: **292 passed, 0 failed (100% passing rate, 88% overall code coverage)**  
 **Code Quality**: Flake8: 0 fatal/syntax errors (`E9,F63,F7,F82`); Bandit AST SAST: 0 Medium/High issues; Pip-Audit: 0 known vulnerabilities  
 
 ---
@@ -319,5 +319,48 @@ Version 1.2.9 delivers targeted, high-value defensive security improvements, sup
 - **Endpoint Attack Evaluation**: 18 scenarios (12 malicious, 6 benign) achieving 100% accuracy, 0 FP, 0 FN in `tests/test_endpoint_attack_evaluation.py`
 - **SBOM Integrity**: 3 tests in `tests/test_sbom_and_lockfile.py`
 - **Static Code Analysis & Security**: 0 Flake8 errors, 0 Bandit High/Medium issues, clean pip-audit
+
+---
+
+## 11. Version 1.2.10 Benchmark Decoupling, Reachability Refinement, Docker Hardening & Dynamic SBOM Audit
+
+### Executive Overview (v1.2.10)
+Version 1.2.10 addresses critical verification, detection evaluation integrity, and deployment security items identified during exhaustive code and architecture review:
+1. **Endpoint Attack Detection Benchmark Decoupling**:
+   - Eliminated ground-truth leakage (`scenario.is_malicious`) in `app/security/endpoint_attack_evaluator.py`. Predictions are now determined purely by parsed telemetry, detection rules, and risk scoring (`risk_score >= 40`).
+   - Ground-truth labels are preserved exclusively for evaluation metrics after predictions are computed.
+   - Resolved ATT&CK technique mismatches: Encoded PowerShell correctly maps to `T1059.001` (sub-technique), firewall disablement maps to `T1562.001`, and suspicious DNS queries to C2 map to `T1071.004`.
+   - Preserved valid benign mappings; ordinary PowerShell commands and routine interactive logons (`LogonType: 2`) are not classified as adversary activity.
+   - Added regression test suite (`tests/test_endpoint_attack_evaluation.py`) proving prediction independence from label and technique flipping, graceful empty/malformed record handling, and explicit reporting of mismatches.
+2. **Passive Network Exposure Accuracy & Defensive Posture**:
+   - Enhanced `HostSecuritySensor.assess_socket_reachability` to inspect specific local firewall rules (`inspect_port_firewall_rule`) via `netsh advfirewall` where supported.
+   - Disassociated listening socket posture findings from ATT&CK `T1046` (Adversary Network Service Discovery), correctly identifying listening sockets as host attack surface exposure rather than active scanning tools.
+   - Added explicit confidence ratings (`HIGH`, `MEDIUM`, `LOW`) and reachability metadata (`reachability_type="INFERRED_PASSIVE"`).
+   - Provided tailored remediation guidance for high-risk ports such as SMB 445 bound to non-loopback interfaces.
+   - Added unit tests in `tests/test_network_reachability.py` covering indeterminate firewall states, IPv6 bindings, development process filtering, and process permission boundaries.
+3. **Docker Authentication & Exposure Hardening**:
+   - Bound web port in `docker-compose.yml` strictly to `127.0.0.1:8000:8000` rather than wildcard `0.0.0.0:8000`.
+   - Added persistent named volume `soc_data:/app/data` with `DATA_DIR: /app/data`, guaranteeing credentials (`.auth_credentials`) survive container destruction or image upgrades.
+   - Enforced non-default, high-entropy PostgreSQL password validation in production in `app/config.py`.
+   - Added regression tests in `tests/test_docker_security_config.py` verifying loopback binding, database network isolation, persistent volume configuration, and non-root execution.
+4. **Dynamic SBOM Resolution with PostgreSQL Driver**:
+   - Upgraded `scripts/generate_sbom.py` to dynamically inspect installed runtime packages via `importlib.metadata`, explicitly incorporating `psycopg2-binary==2.9.10` and transitive dependencies.
+   - Regenerated `requirements.lock` (24 packages), CycloneDX v1.5 `sbom.json`, and SPDX v2.3 `sbom.spdx.json` aligned to version `1.2.10`.
+   - Added regression test `tests/test_sbom_and_lockfile.py` asserting lockfile/SBOM parity and PostgreSQL driver presence.
+5. **Documentation Link Remediation**:
+   - Eliminated all local `file:///C:/...` links from `README.md` and `docs/requirements_specification.md`, replacing them with portable relative links.
+   - Synchronized test counts across all documentation badges, text, and repository structure trees to **292 passing tests** (88% code coverage).
+6. **Continuous Integration Pipeline Hardening**:
+   - Integrated `scripts/evaluate_endpoint_attacks.py` into `.github/workflows/ci.yml` and `.github/workflows/release-exe.yml` alongside the behavioral baseline benchmark.
+
+### Key Verification Metrics (v1.2.10)
+- **Automated Pytest Results**: **292 passed, 0 failed in 56.56s**
+- **Overall Code Coverage**: **88%** (3,664 statements evaluated, exceeding 85% CI floor)
+- **Realistic Endpoint Telemetry Benchmark**: 18 scenarios (12 malicious, 6 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives, 100% MITRE Technique Match Accuracy**
+- **Behavioral Process Benchmark**: 50 scenarios (25 malicious, 25 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives**
+- **Standalone Windows Executable**: 54,101,860 bytes verified with live HTTP API smoke test (`/api/v1/auth/me`)
+- **Authoritative Release Checksum**: `a01a3d1700091e705b80961142e6bdfb518f8c56599e97339db73eb2cde315eb`
+- **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, clean pip-audit (0 vulnerabilities)
+
 
 

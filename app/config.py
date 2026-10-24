@@ -86,7 +86,7 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.9"
+    VERSION: str = "1.2.10"
     API_V1_STR: str = "/api/v1"
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
@@ -238,15 +238,15 @@ class Settings:
                 )
 
             # Database password validation if PostgreSQL is configured
-            if _pg_pass:
-                _pg_pass_lower = _pg_pass.lower()
+            if _pg_host:
                 if (
-                    len(_pg_pass) < 12
-                    or _pg_pass_lower in self.PROHIBITED_PRODUCTION_KEYS
-                    or any(sub in _pg_pass_lower for sub in self.PROHIBITED_SUBSTRINGS)
+                    not _pg_pass
+                    or len(_pg_pass) < 12
+                    or _pg_pass.lower() in self.PROHIBITED_PRODUCTION_KEYS
+                    or any(sub in _pg_pass.lower() for sub in self.PROHIBITED_SUBSTRINGS)
                 ):
                     raise RuntimeError(
-                        "CRITICAL SECURITY ERROR: POSTGRES_PASSWORD must be a strong non-default password (≥ 12 chars) in production."
+                        "CRITICAL SECURITY ERROR: POSTGRES_PASSWORD must be configured with a strong non-default password (≥ 12 chars) in production when using PostgreSQL."
                     )
 
             self.SECRET_KEY: str = _env_secret

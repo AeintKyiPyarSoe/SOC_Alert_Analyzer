@@ -24,8 +24,8 @@ The SOC Alert Analyzer ingests raw, disparate security telemetry (Wazuh JSON, Su
 - **TTP**: Tactics, Techniques, and Procedures
 
 ### 1.4 References
-- [SOC_Alert_Analyzer_Project.md](file:///C:/Siam%20BSc%20IT/VibeCode/SOC_Alert_Analyzer/SOC_Alert_Analyzer_Project.md)
-- [project_charter.md](file:///C:/Siam%20BSc%20IT/VibeCode/SOC_Alert_Analyzer/docs/project_charter.md)
+- [SOC_Alert_Analyzer_Project.md](../SOC_Alert_Analyzer_Project.md)
+- [project_charter.md](project_charter.md)
 - MITRE ATT&CK Enterprise Matrix v14
 - RFC 5424 (The Syslog Protocol)
 
