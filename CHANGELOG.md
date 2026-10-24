@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.12] - 2026-10-25
+
+### Added
+- **Explicit Monitoring Lifecycle State Model**:
+  - Replaced false ACTIVE initial indicator with a seven-state operational model: `UNKNOWN`, `CHECKING`, `ACTIVE`, `PAUSING`, `PAUSED`, `RESUMING`, and `ERROR`.
+  - Default neutral `CHECKING` indicator on page load eliminates misleading green active glow prior to backend verification.
+  - Complete decoupling of WebSocket connection state (`connecting`, `connected`, `reconnecting`, `disconnected`, `auth_required`) from host telemetry sensor status.
+  - Frontend double-click protection and optimistic state updates with rollback on network failure in `app/static/js/app.js`.
+- **Asynchronous Task Quiescence & Cancellation Await**:
+  - Serialized all monitoring and simulation lifecycle transitions using `asyncio.Lock()` to prevent race conditions during rapid state changes.
+  - Transformed `stop_host_monitoring` into an asynchronous coroutine that cleanly cancels and `await`s the running task before returning HTTP 200.
+  - Added in-flight audit cancellation: if monitoring is paused during a scan cycle, in-flight findings are discarded and the database transaction is rolled back cleanly.
+- **Explicit Persistence Error Reporting**:
+  - Updated `save_monitoring_preferences` in `app/config.py` to return explicit `{persisted: bool, persistence_error: Optional[str]}` status.
+  - Surfaced persistence indicators in `/api/v1/stream/status` and `/api/v1/host/monitor/toggle`.
+  - Guaranteed that disk write failures leave the existing valid preference file intact.
+- **Reproducible Dependency Management & CI Hardening**:
+  - Updated `.github/workflows/ci.yml` and `release-exe.yml` to install runtime dependencies strictly from `requirements.lock`.
+  - Pinned `pyinstaller==6.22.2` for deterministic Windows release executable packaging.
+  - Regenerated CycloneDX v1.5 `sbom.json` and SPDX v2.3 `sbom.spdx.json` aligned to version `1.2.12`.
+- **Standalone Windows Executable Process Lifecycle Integration Test Suite**:
+  - Implemented `scripts/test_exe_lifecycle_integration.py` executing tests A through G across process restarts in an isolated dynamic port environment.
+  - Integrated into the release CI/CD pipeline to verify binary startup, pause persistence, alert clearance, reboot quiescence, and manual audits.
+- **Automated Release Manifest Consistency Verification**:
+  - Created `tests/test_release_manifest_consistency.py` asserting strict synchronization across application code, FastAPI metadata, README, CHANGELOG, SBOM manifests, and release checksums.
+
+---
+
 ## [1.2.11] - 2026-10-25
 
 ### Added

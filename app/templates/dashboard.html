@@ -21,10 +21,11 @@
         <button class="btn btn-outline btn-sm" id="btn-clear-alerts" onclick="clearAllAlerts()" title="Clear alert history and re-audit host">
             🗑️ Clear History
         </button>
-        {% set _is_mon_active = stream_status.host_monitoring_active if stream_status is defined else (host_info.monitoring_active if host_info is defined and host_info else True) %}
-        {% set _is_sim_active = stream_status.simulation_active if stream_status is defined else False %}
-        <button class="btn {% if _is_mon_active %}btn-outline{% else %}btn-secondary{% endif %} btn-sm" id="btn-toggle-host-monitor" onclick="toggleHostMonitoring()" title="{% if _is_mon_active %}Pause continuous host security sensor{% else %}Resume continuous host security sensor{% endif %}">
-            {% if _is_mon_active %}⚡ Host Sensor: ACTIVE{% else %}⏸️ Host Sensor: PAUSED{% endif %}
+        {% set _curr_stream = stream_status if stream_status is defined else (get_stream_status() if get_stream_status is defined else None) %}
+        {% set _is_mon_active = _curr_stream.host_monitoring_active if _curr_stream else None %}
+        {% set _is_sim_active = _curr_stream.simulation_active if _curr_stream else False %}
+        <button class="btn {% if _is_mon_active is true %}btn-outline{% elif _is_mon_active is false %}btn-secondary{% else %}btn-secondary{% endif %} btn-sm" id="btn-toggle-host-monitor" onclick="toggleHostMonitoring()" title="{% if _is_mon_active is true %}Pause continuous host security sensor{% elif _is_mon_active is false %}Resume continuous host security sensor{% else %}Checking host security sensor status...{% endif %}">
+            {% if _is_mon_active is true %}⚡ Host Sensor: ACTIVE{% elif _is_mon_active is false %}⏸️ Host Sensor: PAUSED{% else %}⏳ Host Sensor: CHECKING...{% endif %}
         </button>
         <button class="btn {% if _is_sim_active %}btn-outline{% else %}btn-secondary{% endif %} btn-sm" id="btn-toggle-sim" onclick="toggleSimulation()" title="{% if _is_sim_active %}Pause synthetic threat simulation stream{% else %}Resume synthetic threat simulation stream{% endif %}">
             {% if _is_sim_active %}🎮 Simulation: ACTIVE{% else %}⏸️ Simulation: PAUSED{% endif %}
@@ -46,9 +47,9 @@
         <span class="data-notice-icon">
             <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
         </span>
-        <span id="data-notice-text">{% if not _is_mon_active %}Host EDR: Continuous monitoring is paused. Historical alerts retained.{% else %}Host EDR: Monitoring local machine processes, sockets & telemetry in real time{% endif %}</span>
+        <span id="data-notice-text">{% if _is_mon_active is true %}Host EDR: Monitoring local machine processes, sockets & telemetry in real time{% elif _is_mon_active is false %}Host EDR: Continuous monitoring is paused. Historical alerts retained.{% else %}Host EDR: Checking sensor status...{% endif %}</span>
     </div>
-    <span class="data-notice-status-tag {% if not _is_mon_active %}paused{% endif %}" id="data-notice-tag">{% if not _is_mon_active %}Sensor Paused{% else %}Live Sensor{% endif %}</span>
+    <span class="data-notice-status-tag {% if _is_mon_active is true %}active{% elif _is_mon_active is false %}paused{% else %}checking{% endif %}" id="data-notice-tag">{% if _is_mon_active is true %}Live Sensor{% elif _is_mon_active is false %}Sensor Paused{% else %}Checking Status{% endif %}</span>
 </div>
 
 <!-- 6.1 Severity Overview Cards -->
@@ -225,9 +226,9 @@
             </div>
         </div>
     </div>
-    <div style="font-size: 0.75rem; color: {% if not _is_mon_active %}var(--text-muted){% else %}var(--accent-mint){% endif %}; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+    <div style="font-size: 0.75rem; color: {% if _is_mon_active is true %}var(--accent-mint){% elif _is_mon_active is false %}var(--text-muted){% else %}var(--text-faint){% endif %}; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
         <span>🛡️</span>
-        <span id="host-edr-mode-label">{% if not _is_mon_active %}Native Host EDR Paused{% else %}Native Host EDR Active{% endif %}</span>
+        <span id="host-edr-mode-label">{% if _is_mon_active is true %}Native Host EDR Active{% elif _is_mon_active is false %}Native Host EDR Paused{% else %}Native Host EDR: Checking...{% endif %}</span>
     </div>
 </aside>
 {% endif %}

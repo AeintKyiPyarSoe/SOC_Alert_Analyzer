@@ -270,8 +270,32 @@ button, input, select, textarea {
     animation: pulseGlow 2s infinite;
 }
 
+.live-sensor-pill.checking {
+    border-color: rgba(99, 179, 237, 0.4);
+    color: var(--text-muted);
+}
+
+.live-sensor-pill.unknown,
+.live-sensor-pill.error {
+    border-color: rgba(226, 232, 240, 0.2);
+    color: var(--text-faint);
+}
+
 .live-sensor-pill .pulse-dot.paused {
     background: #718096;
+    box-shadow: none;
+    animation: none;
+}
+
+.live-sensor-pill .pulse-dot.checking {
+    background: #63b3ed;
+    box-shadow: none;
+    animation: none;
+}
+
+.live-sensor-pill .pulse-dot.unknown,
+.live-sensor-pill .pulse-dot.error {
+    background: #4a5568;
     box-shadow: none;
     animation: none;
 }
@@ -486,6 +510,17 @@ button, input, select, textarea {
 .data-notice-status-tag.paused {
     border-color: rgba(246, 173, 85, 0.4);
     color: var(--text-muted);
+}
+
+.data-notice-status-tag.checking {
+    border-color: rgba(99, 179, 237, 0.4);
+    color: var(--text-muted);
+}
+
+.data-notice-status-tag.unknown,
+.data-notice-status-tag.error {
+    border-color: rgba(226, 232, 240, 0.2);
+    color: var(--text-faint);
 }
 
 /* --------------------------------------------------------------------------

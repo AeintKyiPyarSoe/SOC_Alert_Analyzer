@@ -1,6 +1,6 @@
 # ==============================================================================
 # SOC Alert Analyzer - Reproducible Dependency Lockfile
-# Generated: 2026-10-24T20:14:14.031753+00:00
+# Generated: 2026-10-24T21:02:16.526773+00:00
 # Scope: Direct and transitive runtime dependencies for deterministic builds.
 # ==============================================================================
 

@@ -60,14 +60,14 @@ async def lifespan(app: FastAPI):
     # Authoritative configuration initialization for monitoring and simulation respecting persisted preferences
     if stream_manager.host_monitoring_active:
         initial_host_baseline()
-        stream_manager.start_host_monitoring(persist=False)
+        await stream_manager.start_host_monitoring(persist=False)
     else:
-        stream_manager.stop_host_monitoring(persist=False)
+        await stream_manager.stop_host_monitoring(persist=False)
 
     if stream_manager.simulation_active:
-        stream_manager.start_simulation(persist=False)
+        await stream_manager.start_simulation(persist=False)
     else:
-        stream_manager.stop_simulation(persist=False)
+        await stream_manager.stop_simulation(persist=False)
 
     yield
 

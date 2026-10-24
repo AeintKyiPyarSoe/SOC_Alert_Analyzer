@@ -33,7 +33,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
           pip install pytest-cov
 
       - name: Run Pytest Suite with Coverage
@@ -64,7 +64,7 @@ jobs:
       - name: Install Audit and Linting Tools
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
           pip install flake8 ruff pip-audit bandit
 
       - name: Python Syntax and Fatal Error Linting (flake8)

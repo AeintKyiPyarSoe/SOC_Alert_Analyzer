@@ -2,9 +2,9 @@
 
 **Date**: October 25, 2026  
 **Target Repository**: [SOC_Alert_Analyzer](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer)  
-**Release Version**: v1.2.11 (Latest Active Release)  
+**Release Version**: v1.2.12 (Latest Active Release)  
 **Execution Environment**: Local Workspace (Source of Truth)  
-**Final Test Status**: **296 passed, 0 failed (100% passing rate, 87.07% overall code coverage, >=85% CI floor)**  
+**Final Test Status**: **301 passed, 0 failed (100% passing rate, 86.65% overall code coverage, >=85% CI floor)**  
 **Code Quality**: Flake8: 0 fatal/syntax errors (`E9,F63,F7,F82`); Bandit AST SAST: 0 Medium/High issues; Pip-Audit: 0 known vulnerabilities  
 
 ---
@@ -366,3 +366,41 @@ Version 1.2.10 addresses critical verification, detection evaluation integrity, 
 
 
 
+
+
+## 12. Version 1.2.12 Monitoring Lifecycle Reliability, Quiescence, Reproducible Builds & Release Verification
+
+### Executive Overview (v1.2.12)
+Version 1.2.12 achieves complete end-to-end reliability for real-world host monitoring and release packaging:
+1. **Explicit State Model & Indicator Synchronization**:
+   - Replaced false ACTIVE defaults with a seven-state operational model: `UNKNOWN`, `CHECKING`, `ACTIVE`, `PAUSING`, `PAUSED`, `RESUMING`, `ERROR`.
+   - Neutral `CHECKING` appearance on page load eliminates deceptive green glows before backend verification.
+   - Decoupled WebSocket connection states (`connecting`, `connected`, `reconnecting`, `disconnected`, `auth_required`) from host telemetry status.
+   - Frontend debounce and double-click protection prevents duplicate requests and state thrashing.
+2. **Asynchronous Task Quiescence & Cancellation Await**:
+   - Serialized all monitoring and simulation transitions using `asyncio.Lock()` (`_lifecycle_lock`).
+   - Converted `stop_host_monitoring` into an asynchronous coroutine that cleanly cancels and `await`s the running task before returning HTTP 200.
+   - In-flight findings rollback: if paused during an audit cycle, in-flight findings are cleanly rolled back from the database session and discarded.
+3. **Explicit Preference Persistence Error Reporting**:
+   - Updated `save_monitoring_preferences` in `app/config.py` to return explicit `{persisted: bool, persistence_error: Optional[str]}` status.
+   - Exposed persistence status in `/api/v1/stream/status` and `/api/v1/host/monitor/toggle`.
+   - Guaranteed that disk write failures leave existing valid preference files intact.
+   - Added `DATA_DIR` environment override support in frozen PyInstaller mode.
+4. **Reproducible Dependency Management & CI Hardening**:
+   - Updated GitHub Actions CI and release workflows to install strictly via pinned `requirements.lock`.
+   - Pinned `pyinstaller==6.22.2`.
+   - Regenerated CycloneDX v1.5 `sbom.json` and SPDX v2.3 `sbom.spdx.json` aligned to version `1.2.12`.
+5. **Standalone Windows Executable Process Lifecycle Integration Suite**:
+   - Created `scripts/test_exe_lifecycle_integration.py` exercising Tests A through G across process restarts in isolated environments.
+   - Integrated into release CI/CD pipeline to verify binary startup, pause persistence, alert clearance, reboot quiescence, and manual audits.
+6. **Automated Release Manifest Consistency Verification**:
+   - Added `tests/test_release_manifest_consistency.py` asserting strict synchronization across application code, FastAPI metadata, README, CHANGELOG, SBOM manifests, and release checksums.
+
+### Key Verification Metrics (v1.2.12)
+- **Automated Pytest Results**: **301 passed, 0 failed (100% passing rate)**
+- **Overall Code Coverage**: **86.65%** (3,814 statements evaluated, exceeding 85% CI floor)
+- **Realistic Endpoint Telemetry Benchmark**: 18 scenarios (12 malicious, 6 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives, 100% MITRE Technique Match Accuracy**
+- **Empirical Detection Evaluation Benchmark**: 50 scenarios (25 malicious, 25 benign) achieving **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives**
+- **Standalone Windows Executable**: 54,110,131 bytes, verified across process restarts with `scripts/test_exe_lifecycle_integration.py` (Tests A through G passing)
+- **Authoritative Release Checksum**: `c902ac6f4d44eea802511f77a65bea968c5a4fb3557a2e9fb3af6e91d9879d27`
+- **Static Code Analysis & Security**: 0 Flake8 errors, 0 Ruff errors, 0 Bandit High/Medium issues, clean pip-audit (0 vulnerabilities)

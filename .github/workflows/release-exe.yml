@@ -29,8 +29,8 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller flake8 bandit pip-audit pytest-cov
+          pip install -r requirements.lock
+          pip install "pyinstaller==6.22.2" flake8 bandit pip-audit pytest-cov
 
       - name: Lint Syntax & Undefined Names (Flake8)
         run: |
@@ -63,6 +63,10 @@ jobs:
       - name: Smoke Test Standalone Executable (--help)
         run: |
           .\dist\SOC_Alert_Analyzer.exe --help
+
+      - name: Run Executable Process Lifecycle Integration Test Across Restarts
+        run: |
+          python scripts/test_exe_lifecycle_integration.py --exe dist/SOC_Alert_Analyzer.exe
 
       - name: Verify Packaged Resources & Live HTTP API Smoke Test
         shell: powershell

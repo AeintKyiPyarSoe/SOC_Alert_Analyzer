@@ -69,6 +69,6 @@ def test_canonical_version_consistency():
     from app.config import settings
     from app.main import app as fastapi_app
 
-    assert settings.VERSION == "1.2.11"
-    assert app.__version__ == "1.2.11"
-    assert fastapi_app.version == "1.2.11"
+    assert settings.VERSION == "1.2.12"
+    assert app.__version__ == "1.2.12"
+    assert fastapi_app.version == "1.2.12"

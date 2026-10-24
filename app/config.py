@@ -11,7 +11,10 @@ if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     BASE_DIR = Path(sys._MEIPASS)
 
     # Writable user data directory (never store databases or credentials in temporary _MEIPASS)
-    if sys.platform == "win32":
+    data_dir_env = os.getenv("DATA_DIR")
+    if data_dir_env:
+        DATA_DIR = Path(data_dir_env)
+    elif sys.platform == "win32":
         local_app_data = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
         if local_app_data:
             DATA_DIR = Path(local_app_data) / "SOC_Alert_Analyzer"
@@ -130,18 +133,16 @@ def load_monitoring_preferences(data_dir: Optional[Path] = None) -> dict:
 def save_monitoring_preferences(
     host_monitoring: bool,
     simulation: Optional[bool] = None,
-    data_dir: Optional[Path] = None
+    data_dir: Optional[Path] = None,
+    raise_on_error: bool = False
 ) -> dict:
     """
     Atomically persists user monitoring preferences to persistent data directory.
     Guarantees state is preserved across Windows EXE restarts, local runs, and Docker volume mounts.
     Never stores sensitive credentials in this file.
+    Returns dictionary with preference state, 'persisted' (bool), and 'persistence_error' (Optional[str]).
     """
     target_dir = data_dir or DATA_DIR
-    try:
-        target_dir.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
     pref_file = target_dir / "monitoring_preferences.json"
     temp_file = target_dir / f".monitoring_preferences_{secrets.token_hex(4)}.tmp"
 
@@ -150,27 +151,48 @@ def save_monitoring_preferences(
     if simulation is not None:
         current["simulation_active"] = bool(simulation)
 
+    persisted = False
+    persistence_error = None
+
     try:
+        target_dir.mkdir(parents=True, exist_ok=True)
         with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(current, f, indent=2)
+            json.dump(
+                {
+                    "host_monitoring_active": current["host_monitoring_active"],
+                    "simulation_active": current["simulation_active"]
+                },
+                f,
+                indent=2
+            )
             f.flush()
             try:
                 os.fsync(f.fileno())
             except Exception:
                 pass
         os.replace(temp_file, pref_file)
-    except Exception:
+        persisted = True
+    except Exception as exc:
+        persistence_error = f"{type(exc).__name__}: {str(exc)}"
         if temp_file.exists():
             try:
                 temp_file.unlink()
             except Exception:
                 pass
-    return current
+        if raise_on_error:
+            raise
+
+    return {
+        "host_monitoring_active": current["host_monitoring_active"],
+        "simulation_active": current["simulation_active"],
+        "persisted": persisted,
+        "persistence_error": persistence_error
+    }
 
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.11"
+    VERSION: str = "1.2.12"
     API_V1_STR: str = "/api/v1"
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR

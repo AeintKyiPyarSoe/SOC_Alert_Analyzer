@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:9cda3398-0921-4647-a607-33e8b8837310",
+  "serialNumber": "urn:uuid:2cc2c4a9-7dc1-4120-b0ca-7a11a7291291",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-24T20:14:14.032760+00:00",
+    "timestamp": "2026-10-24T21:02:16.527468+00:00",
     "tools": [
       {
         "vendor": "SOC Alert Analyzer Project",
@@ -16,7 +16,7 @@
     "component": {
       "type": "application",
       "name": "SOC_Alert_Analyzer",
-      "version": "1.2.11",
+      "version": "1.2.12",
       "description": "Defensive blue-team SOC alert triage and host security audit workbench",
       "licenses": [
         {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.11"
+      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.12"
     }
   },
   "components": [

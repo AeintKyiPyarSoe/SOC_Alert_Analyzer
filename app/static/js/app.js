@@ -17,8 +17,10 @@ const SOC_STATE = {
     sort: 'priority',       // 'priority', 'newest'
     sessionReviewed: new Set(),
     checklistProgress: {},  // alertId -> Array of checked step indices
-    isHostMonitoringActive: true,
-    isSimulationActive: false
+    monitoringState: 'CHECKING', // 'CHECKING', 'ACTIVE', 'PAUSING', 'PAUSED', 'RESUMING', 'UNKNOWN', 'ERROR'
+    isHostMonitoringActive: null,
+    isSimulationActive: false,
+    wsConnectionState: 'disconnected'
 };
 
 // --------------------------------------------------------------------------
@@ -28,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSessionStorage();
     loadInitialRealHostAlerts();
     initEventHandlers();
+    updateMonitoringUI('CHECKING');
     initThreatStream();
     initStreamStatus();
     checkAuthStatus();
@@ -1097,14 +1100,29 @@ async function clearAllAlerts() {
 }
 
 function updateMonitoringUI(state) {
-    if (state && typeof state.host_monitoring_active === 'boolean') {
-        SOC_STATE.isHostMonitoringActive = state.host_monitoring_active;
-    }
-    if (state && typeof state.simulation_active === 'boolean') {
-        SOC_STATE.isSimulationActive = state.simulation_active;
+    if (typeof state === 'string') {
+        SOC_STATE.monitoringState = state.toUpperCase();
+        if (SOC_STATE.monitoringState === 'ACTIVE') {
+            SOC_STATE.isHostMonitoringActive = true;
+        } else if (SOC_STATE.monitoringState === 'PAUSED') {
+            SOC_STATE.isHostMonitoringActive = false;
+        }
+    } else if (state && typeof state === 'object') {
+        if (typeof state.host_monitoring_active === 'boolean') {
+            SOC_STATE.isHostMonitoringActive = state.host_monitoring_active;
+            SOC_STATE.monitoringState = state.host_monitoring_active ? 'ACTIVE' : 'PAUSED';
+        }
+        if (typeof state.simulation_active === 'boolean') {
+            SOC_STATE.isSimulationActive = state.simulation_active;
+        }
+        if (state.monitoring_state) {
+            SOC_STATE.monitoringState = String(state.monitoring_state).toUpperCase();
+        }
     }
 
-    const isHostActive = !!SOC_STATE.isHostMonitoringActive;
+    const mState = SOC_STATE.monitoringState || 'CHECKING';
+    const isHostActive = mState === 'ACTIVE';
+    const isHostPaused = mState === 'PAUSED';
     const isSimActive = !!SOC_STATE.isSimulationActive;
 
     // 1. Header Live Sensor Pill & Pulse Dot
@@ -1112,27 +1130,87 @@ function updateMonitoringUI(state) {
     const liveText = document.getElementById('live-sensor-text');
     const pulseDots = livePill ? livePill.querySelectorAll('.pulse-dot') : [];
 
-    if (liveText) {
-        liveText.textContent = isHostActive ? 'HOST SENSOR: ACTIVE' : 'HOST SENSOR: PAUSED';
-    }
     if (livePill) {
-        livePill.classList.toggle('paused', !isHostActive);
-        livePill.classList.toggle('active', isHostActive);
-        livePill.title = isHostActive
-            ? 'Native Host Security Sensor & Live Telemetry: ACTIVE'
-            : 'Native Host Security Sensor: PAUSED (Historical data preserved)';
+        livePill.classList.remove('active', 'paused', 'checking', 'unknown', 'error');
+        if (isHostActive) {
+            livePill.classList.add('active');
+            livePill.title = 'Native Host Security Sensor & Live Telemetry: ACTIVE';
+        } else if (isHostPaused) {
+            livePill.classList.add('paused');
+            livePill.title = 'Native Host Security Sensor: PAUSED (Historical data preserved)';
+        } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING') {
+            livePill.classList.add('checking');
+            livePill.title = `Native Host Security Sensor: ${mState}...`;
+        } else {
+            livePill.classList.add('unknown');
+            livePill.title = 'Native Host Security Sensor: Status unknown or backend unreachable';
+        }
     }
+
     pulseDots.forEach(dot => {
-        dot.classList.toggle('paused', !isHostActive);
+        dot.classList.remove('active', 'paused', 'checking', 'unknown', 'error');
+        if (isHostActive) {
+            // Active state uses pulse animation
+        } else if (isHostPaused) {
+            dot.classList.add('paused');
+        } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING') {
+            dot.classList.add('checking');
+        } else {
+            dot.classList.add('unknown');
+        }
     });
+
+    if (liveText) {
+        if (isHostActive) {
+            liveText.textContent = 'HOST SENSOR: ACTIVE';
+        } else if (isHostPaused) {
+            liveText.textContent = 'HOST SENSOR: PAUSED';
+        } else if (mState === 'PAUSING') {
+            liveText.textContent = 'HOST SENSOR: PAUSING...';
+        } else if (mState === 'RESUMING') {
+            liveText.textContent = 'HOST SENSOR: RESUMING...';
+        } else if (mState === 'CHECKING') {
+            liveText.textContent = 'HOST SENSOR: CHECKING';
+        } else {
+            liveText.textContent = 'HOST SENSOR: STATUS UNKNOWN';
+        }
+    }
 
     // 2. Action Toolbar Host Sensor Toggle Button
     const btnHost = document.getElementById('btn-toggle-host-monitor');
     if (btnHost) {
-        btnHost.textContent = isHostActive ? '⚡ Host Sensor: ACTIVE' : '⏸️ Host Sensor: PAUSED';
-        btnHost.title = isHostActive ? 'Pause continuous host security sensor' : 'Resume continuous host security sensor';
-        btnHost.classList.toggle('btn-outline', isHostActive);
-        btnHost.classList.toggle('btn-secondary', !isHostActive);
+        btnHost.classList.remove('btn-outline', 'btn-secondary');
+        if (isHostActive) {
+            btnHost.textContent = '⚡ Host Sensor: ACTIVE';
+            btnHost.title = 'Pause continuous host security sensor';
+            btnHost.classList.add('btn-outline');
+            btnHost.disabled = false;
+        } else if (isHostPaused) {
+            btnHost.textContent = '⏸️ Host Sensor: PAUSED';
+            btnHost.title = 'Resume continuous host security sensor';
+            btnHost.classList.add('btn-secondary');
+            btnHost.disabled = false;
+        } else if (mState === 'PAUSING') {
+            btnHost.textContent = '⏳ Host Sensor: PAUSING...';
+            btnHost.title = 'Pausing host sensor...';
+            btnHost.classList.add('btn-secondary');
+            btnHost.disabled = true;
+        } else if (mState === 'RESUMING') {
+            btnHost.textContent = '⏳ Host Sensor: RESUMING...';
+            btnHost.title = 'Resuming host sensor...';
+            btnHost.classList.add('btn-outline');
+            btnHost.disabled = true;
+        } else if (mState === 'CHECKING') {
+            btnHost.textContent = '⏳ Host Sensor: CHECKING...';
+            btnHost.title = 'Querying sensor status...';
+            btnHost.classList.add('btn-secondary');
+            btnHost.disabled = true;
+        } else {
+            btnHost.textContent = '⚠️ Host Sensor: STATUS UNKNOWN';
+            btnHost.title = 'Unable to determine sensor status';
+            btnHost.classList.add('btn-secondary');
+            btnHost.disabled = false;
+        }
     }
 
     // 3. Action Toolbar Simulation Toggle Button
@@ -1148,23 +1226,45 @@ function updateMonitoringUI(state) {
     const noticeText = document.getElementById('data-notice-text');
     const noticeTag = document.getElementById('data-notice-tag');
     if (noticeText) {
-        noticeText.textContent = isHostActive
-            ? 'Host EDR: Monitoring local machine processes, sockets & telemetry in real time'
-            : 'Host EDR: Continuous monitoring is paused. Historical alerts retained.';
+        if (isHostActive) {
+            noticeText.textContent = 'Host EDR: Monitoring local machine processes, sockets & telemetry in real time';
+        } else if (isHostPaused) {
+            noticeText.textContent = 'Host EDR: Continuous monitoring is paused. Historical alerts retained.';
+        } else if (mState === 'CHECKING') {
+            noticeText.textContent = 'Host EDR: Checking sensor status...';
+        } else {
+            noticeText.textContent = 'Host EDR: Unable to determine sensor status (backend unreachable)';
+        }
     }
     if (noticeTag) {
-        noticeTag.textContent = isHostActive ? 'Live Sensor' : 'Sensor Paused';
-        noticeTag.classList.toggle('paused', !isHostActive);
-        noticeTag.classList.toggle('active', isHostActive);
+        noticeTag.classList.remove('active', 'paused', 'checking', 'unknown');
+        if (isHostActive) {
+            noticeTag.textContent = 'Live Sensor';
+            noticeTag.classList.add('active');
+        } else if (isHostPaused) {
+            noticeTag.textContent = 'Sensor Paused';
+            noticeTag.classList.add('paused');
+        } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING') {
+            noticeTag.textContent = 'Checking';
+            noticeTag.classList.add('checking');
+        } else {
+            noticeTag.textContent = 'Status Unknown';
+            noticeTag.classList.add('unknown');
+        }
     }
 
     // 5. Host Telemetry Strip Mode Label
     const modeLabel = document.getElementById('host-edr-mode-label');
     if (modeLabel) {
-        modeLabel.textContent = isHostActive ? 'Native Host EDR Active' : 'Native Host EDR Paused';
-        const parentBlock = modeLabel.parentElement;
-        if (parentBlock) {
-            parentBlock.style.color = isHostActive ? 'var(--accent-mint)' : 'var(--text-muted)';
+        if (isHostActive) {
+            modeLabel.textContent = 'Native Host EDR Active';
+            if (modeLabel.parentElement) modeLabel.parentElement.style.color = 'var(--accent-mint)';
+        } else if (isHostPaused) {
+            modeLabel.textContent = 'Native Host EDR Paused';
+            if (modeLabel.parentElement) modeLabel.parentElement.style.color = 'var(--text-muted)';
+        } else {
+            modeLabel.textContent = 'Native Host EDR: Checking...';
+            if (modeLabel.parentElement) modeLabel.parentElement.style.color = 'var(--text-faint)';
         }
     }
 }
@@ -1181,18 +1281,22 @@ async function initStreamStatus() {
             const data = await resp.json();
             updateMonitoringUI(data);
         } else {
-            updateMonitoringUI();
+            updateMonitoringUI('UNKNOWN');
         }
     } catch (e) {
-        updateMonitoringUI();
+        updateMonitoringUI('UNKNOWN');
     }
 }
 
 async function toggleHostMonitoring() {
-    const btnHost = document.getElementById('btn-toggle-host-monitor');
-    if (btnHost) btnHost.disabled = true;
+    if (SOC_STATE.monitoringState === 'PAUSING' || SOC_STATE.monitoringState === 'RESUMING' || SOC_STATE.monitoringState === 'CHECKING') {
+        return; // Prevent duplicate concurrent requests
+    }
 
-    const targetState = !SOC_STATE.isHostMonitoringActive;
+    const currentlyActive = SOC_STATE.monitoringState === 'ACTIVE';
+    const targetState = !currentlyActive;
+    updateMonitoringUI(targetState ? 'RESUMING' : 'PAUSING');
+
     try {
         const resp = await fetch(`/api/v1/host/monitor/toggle?active=${targetState}`, {
             method: 'POST',
@@ -1201,15 +1305,19 @@ async function toggleHostMonitoring() {
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             showToast(`Failed to update host sensor: ${err.detail || resp.statusText}`);
+            await initStreamStatus();
             return;
         }
         const data = await resp.json();
         updateMonitoringUI(data);
-        showToast(SOC_STATE.isHostMonitoringActive ? 'Host sensor active' : 'Host sensor paused');
+        if (data.persisted === false) {
+            showToast(targetState ? 'Host sensor active (Warning: preference save failed)' : 'Host sensor paused (Warning: preference save failed)');
+        } else {
+            showToast(targetState ? 'Host sensor active' : 'Host sensor paused');
+        }
     } catch (e) {
         showToast('Network error updating host sensor status');
-    } finally {
-        if (btnHost) btnHost.disabled = false;
+        await initStreamStatus();
     }
 }
 
