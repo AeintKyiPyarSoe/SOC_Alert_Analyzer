@@ -118,7 +118,7 @@ def test_release_notes_official_checksum_matches_repository_manifest():
     assert notes.exists(), f"Missing current release notes: {notes}"
     content = notes.read_text(encoding="utf-8")
     digest = (ROOT_DIR / "dist" / "SHA256SUMS.txt").read_text(encoding="utf-8").split()[0]
-    match = re.search(r"\\*\\*Authoritative Binary SHA-256[^\\n]*?\\*\\*\\s*`([0-9a-f]{64})`", content)
+    match = re.search(r"\*\*Authoritative Binary SHA-256[^\n]*?\*\*\s*`([0-9a-f]{64})`", content)
     assert match, "Release notes must identify the official published artifact digest"
     assert match.group(1) == digest, "Release notes official digest differs from dist/SHA256SUMS.txt"
 
@@ -126,16 +126,16 @@ def test_release_notes_official_checksum_matches_repository_manifest():
 def test_readme_test_count_claims_are_consistent():
     """Catch stale badges, body text and pytest result output before merging."""
     readme = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
-    badge = re.search(r"tests-(\\d+)%20passed%20%7C%20(\\d+)%20skipped", readme)
+    badge = re.search(r"tests-(\d+)%20passed%20%7C%20(\d+)%20skipped", readme)
     assert badge, "Test badge must distinguish passed from skipped"
     passed, skipped = map(int, badge.groups())
-    body = re.search(r"\\*\\*(\\d+) passed, (\\d+) skipped, (\\d+) failed", readme)
+    body = re.search(r"\*\*(\d+) passed, (\d+) skipped, (\d+) failed", readme)
     assert body, "README testing section must report passed, skipped and failed"
     assert (passed, skipped, 0) == tuple(map(int, body.groups()))
-    summary = re.search(r"={5,}\\s*(\\d+) passed, (\\d+) skipped, (\\d+) warning", readme)
+    summary = re.search(r"={5,}\s*(\d+) passed, (\d+) skipped, (\d+) warning", readme)
     assert summary, "README CI test summary must include skipped tests"
     assert (passed, skipped) == tuple(map(int, summary.groups()[:2]))
-    collected = re.search(r"(\\d+) collected pytest tests \\(\\d+ passed, \\d+ skipped", readme)
+    collected = re.search(r"(\d+) collected pytest tests \((\d+) passed, \d+ skipped", readme)
     assert collected, "README project tree test count must report collected/passed/skipped"
     assert int(collected.group(1)) == passed + skipped
     assert int(collected.group(2)) == passed
