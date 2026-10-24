@@ -481,7 +481,7 @@ class HostSecuritySensor:
         """
         ip_clean = (ip or "").strip()
         is_loopback = ip_clean in ("127.0.0.1", "::1", "localhost")
-        is_wildcard = ip_clean in ("0.0.0.0", "::", "")
+        is_wildcard = ip_clean in ("0.0.0.0", "::", "")  # nosec B104
 
         # Discover active, UP host network interfaces
         active_interfaces: List[str] = []
@@ -548,7 +548,7 @@ class HostSecuritySensor:
                 summary = f"Socket bound to {ip_clean}:{port} (Loopback only)."
 
         return {
-            "binding": ip_clean or "0.0.0.0",
+            "binding": ip_clean or "0.0.0.0",  # nosec B104
             "port": port,
             "binding_type": "LOOPBACK" if is_loopback else ("WILDCARD" if is_wildcard else "SPECIFIC_INTERFACE"),
             "reachability": reachability,

@@ -40,8 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Canonical Version Synchronization**: Bumped canonical package version to `v1.2.9` across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` application metadata.
 - **Test Suite Expansion & Coverage**: Expanded automated pytest suite from 237 to **275 passed (100%)** with **88% overall code coverage**.
 - **Windows Event Parser Enhancements**: Added support for Sysmon Event IDs (1, 3, 7, 8, 10, 11, 12, 13, 22, 25) and advanced Windows Security Event IDs (4672, 4776, 5140, 5145). Contextualized Event 4688 to distinguish benign process launches from suspicious LOLBIN invocations.
-- **Standalone Windows Executable Rebuild**: Recompiled `dist/SOC_Alert_Analyzer.exe` (54,098,115 bytes) with bundled sample datasets and verified runtime smoke tests.
-- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `be5c02e3aa5da88b8c25ba76e8a9fe9dc42e93059f174c3a629a2e9894f976d1`.
+- **Standalone Windows Executable Rebuild**: Recompiled `dist/SOC_Alert_Analyzer.exe` (54,097,437 bytes) with bundled sample datasets and verified runtime smoke tests.
+- **Authoritative Release Checksum**: Updated `dist/SHA256SUMS.txt` with verified SHA-256 digest `c13e2343b76590c5b1ad40b94db321c5ae04f0e95ac9017b64a7186d68eaa9b6`.
 
 ---
 

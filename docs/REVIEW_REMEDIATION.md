@@ -307,7 +307,7 @@ Version 1.2.9 delivers targeted, high-value defensive security improvements, sup
 3. **Realistic Endpoint Attack Evaluation Lab**: Formulated a comprehensive benchmark evaluating realistic Sysmon and Windows Event logs across the MITRE ATT&CK kill-chain (18 scenarios), confirming 100% precision and recall with 0 false positives on difficult benign administrator workloads.
 4. **Reproducible Builds & Software Bill of Materials**: Introduced `requirements.lock` and standard CycloneDX v1.5 (`sbom.json`) and SPDX v2.3 (`sbom.spdx.json`) machine-readable SBOMs.
 5. **Test Suite & Coverage Expansion**: Automated test suite expanded to **275 passed tests (100% pass rate)** with **88% overall code coverage**.
-6. **Standalone Binary Rebuild**: Rebuilt `dist/SOC_Alert_Analyzer.exe` (54,098,115 bytes) and synchronized SHA-256 integrity verification (`be5c02e3aa5da88b8c25ba76e8a9fe9dc42e93059f174c3a629a2e9894f976d1`).
+6. **Standalone Binary Rebuild**: Rebuilt `dist/SOC_Alert_Analyzer.exe` (54,097,437 bytes) and synchronized SHA-256 integrity verification (`c13e2343b76590c5b1ad40b94db321c5ae04f0e95ac9017b64a7186d68eaa9b6`).
 
 ---
 
