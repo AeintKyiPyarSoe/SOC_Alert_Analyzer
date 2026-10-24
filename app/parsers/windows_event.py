@@ -26,9 +26,25 @@ class WindowsEventParser(BaseParser):
     """
 
     EVENT_ID_MAP = {
+        # Sysmon Specific Event IDs (Microsoft-Windows-Sysmon/Operational)
+        1: ("sysmon_process_creation", "Sysmon Process Creation"),
+        3: ("sysmon_network_connection", "Sysmon Network Connection Detected"),
+        7: ("sysmon_image_loaded", "Sysmon Module / DLL Image Loaded"),
+        8: ("sysmon_create_remote_thread", "Sysmon CreateRemoteThread Detected (Process Injection)"),
+        10: ("sysmon_process_access", "Sysmon ProcessAccess Detected (LSASS / Memory Access)"),
+        11: ("sysmon_file_created", "Sysmon File Created"),
+        12: ("sysmon_registry_event", "Sysmon Registry Object Created / Deleted"),
+        13: ("sysmon_registry_event", "Sysmon Registry Value Set (Persistence Run Key)"),
+        22: ("sysmon_dns_query", "Sysmon DNS Query Detected"),
+        25: ("sysmon_process_tampering", "Sysmon Process Tampering Detected"),
+        # Critical Windows Security & System Event IDs
         4625: ("windows_failed_logon", "Windows Failed Logon / Bad Password Attempt"),
         4624: ("windows_successful_logon", "Windows Successful Logon"),
-        4688: ("windows_suspicious_process", "Windows Process Created"),
+        4688: ("windows_process_creation", "Windows Process Created"),
+        4672: ("windows_special_privileges", "Special Privileges Assigned to New Logon"),
+        4776: ("windows_ntlm_auth", "NTLM Credential Validation Attempt"),
+        5140: ("windows_network_share", "Network Share Object Accessed (SMB)"),
+        5145: ("windows_network_share_detailed", "Network Share Object Checked for Access"),
         7045: ("windows_service_installed", "Windows Service Installed"),
         4698: ("windows_scheduled_task", "Windows Scheduled Task Created"),
         4720: ("windows_account_created", "Windows User Account Created"),
@@ -104,23 +120,38 @@ class WindowsEventParser(BaseParser):
             event_id, ("windows_event", f"Windows Event ID {event_id}")
         )
 
+        provider = str(item.get("Provider_Name") or item.get("Provider") or item.get("Channel") or "")
+        is_sysmon = "sysmon" in provider.lower() or event_id in (1, 3, 7, 8, 10, 11, 12, 13, 22, 25)
+        source_type = "Sysmon" if is_sysmon else "Windows_Event"
+
         # Timestamps
         time_created = item.get("TimeCreated") or item.get("TimeGenerated") or item.get("timestamp")
         timestamp = self._parse_timestamp(time_created)
 
-        # Message / Details
-        msg = item.get("Message") or item.get("message") or item.get("description") or default_desc
+        # Message / Details / EventData
+        data = item.get("EventData") if isinstance(item.get("EventData"), dict) else item
+        msg = item.get("Message") or item.get("message") or item.get("description")
 
         # Extract IP, username, process info from message or dictionary
-        src_ip = item.get("IpAddress") or item.get("SourceNetworkAddress") or item.get("source_ip")
-        src_port = item.get("IpPort") or item.get("SourcePort") or item.get("source_port")
-        username = item.get("TargetUserName") or item.get("AccountName") or item.get("username")
+        src_ip = data.get("IpAddress") or data.get("SourceNetworkAddress") or data.get("SourceIp") or item.get("source_ip")
+        src_port = data.get("IpPort") or data.get("SourcePort") or item.get("source_port")
+        dst_ip = data.get("DestinationIp") or item.get("destination_ip") or item.get("DestinationAddress")
+        dst_port = data.get("DestinationPort") or item.get("destination_port")
+        username = data.get("TargetUserName") or data.get("AccountName") or data.get("SubjectUserName") or data.get("User") or item.get("username")
+
+        # Extract Sysmon / Process Creation fields
+        image = data.get("Image") or data.get("NewProcessName") or data.get("ProcessName")
+        cmdline = data.get("CommandLine") or data.get("ProcessCommandLine")
+        parent_image = data.get("ParentImage") or data.get("ParentProcessName")
+        target_obj = data.get("TargetObject") or data.get("TargetFilename") or data.get("TargetImage")
+        granted_access = data.get("GrantedAccess")
+        query_name = data.get("QueryName")
 
         if not src_ip and isinstance(msg, str):
-            ip_m = re.search(r"(?:Source Network Address|IP Address|Workstation IP|Client IP):\s*([0-9a-fA-F\.\:]+)", msg, re.IGNORECASE)
+            ip_m = re.search(r"(?:Source Network Address|IP Address|Workstation IP|Client IP|SourceIp):\s*([0-9a-fA-F\.\:]+)", msg, re.IGNORECASE)
             if ip_m:
                 candidate = ip_m.group(1).strip()
-                if candidate != "-" and candidate != "::1":
+                if candidate not in ("-", "::1"):
                     src_ip = candidate
 
         if not username and isinstance(msg, str):
@@ -130,24 +161,58 @@ class WindowsEventParser(BaseParser):
                 if u not in ("-", "SYSTEM", "N/A"):
                     username = u
 
-        # Build clean description
+        # Classify process creation suspiciousness
+        if event_id in (4688, 1):
+            cmd_check = f"{cmdline or ''} {image or ''}".lower()
+            suspicious_tokens = (
+                "-enc", "-encodedcommand", "powershell", "certutil", "mshta", "vssadmin",
+                "mimikatz", "netsh advfirewall", "downloadstring", "downloadfile",
+                "invoke-expression", "-w hidden", "-windowstyle hidden", "wscript",
+                "cscript", "rundll32", "regsvr32", "bitsadmin", "sekurlsa"
+            )
+            if any(t in cmd_check for t in suspicious_tokens):
+                event_type = "windows_suspicious_process" if event_id == 4688 else "sysmon_suspicious_process"
+
+        # Build clean, informative description
         first_line = msg.split("\n")[0].strip() if isinstance(msg, str) else default_desc
-        description = f"[Event {event_id}] {first_line}"
-        if username:
-            description += f" (User: {username})"
-        if src_ip:
-            description += f" from {src_ip}"
+        prefix = f"[Sysmon Event {event_id}]" if is_sysmon else f"[Event {event_id}]"
+
+        if is_sysmon:
+            if event_id == 1:
+                description = f"{prefix} Process Created: {image or 'Unknown'}"
+                if cmdline:
+                    description += f" - CommandLine: {cmdline}"
+                if parent_image:
+                    description += f" (Parent: {parent_image})"
+            elif event_id == 3:
+                description = f"{prefix} Network Connection: {image or 'Process'} -> {dst_ip or 'Remote'}:{dst_port or 'Port'}"
+            elif event_id == 10:
+                description = f"{prefix} Process Access: {data.get('SourceImage', 'Unknown')} accessed {target_obj or 'Target'} (GrantedAccess: {granted_access or 'Unknown'})"
+            elif event_id == 11:
+                description = f"{prefix} File Created: {target_obj or 'File'} by {image or 'Process'}"
+            elif event_id == 13:
+                description = f"{prefix} Registry Value Set: {target_obj or 'Key'} by {image or 'Process'}"
+            elif event_id == 22:
+                description = f"{prefix} DNS Query: {query_name or 'Domain'} by {image or 'Process'}"
+            else:
+                description = f"{prefix} {first_line}"
+        else:
+            description = f"{prefix} {first_line}"
+            if username:
+                description += f" (User: {username})"
+            if src_ip:
+                description += f" from {src_ip}"
 
         return {
-            "source_type": "Windows_Event",
+            "source_type": source_type,
             "timestamp": timestamp,
             "event_type": event_type,
             "description": description,
             "event_id": event_id,
             "source_ip": src_ip,
-            "destination_ip": item.get("DestinationIp") or item.get("destination_ip"),
+            "destination_ip": dst_ip,
             "source_port": int(src_port) if src_port and str(src_port).isdigit() else None,
-            "destination_port": None,
+            "destination_port": int(dst_port) if dst_port and str(dst_port).isdigit() else None,
             "username": username,
             "raw_log": json.dumps(item) if not isinstance(msg, str) else msg
         }
@@ -187,6 +252,14 @@ class WindowsEventParser(BaseParser):
                     event_id, ("windows_event", f"Windows Event ID {event_id}")
                 )
 
+                provider_el = system.find("Provider") if system is not None else None
+                provider_name = provider_el.attrib.get("Name", "") if provider_el is not None else ""
+                channel_el = system.find("Channel") if system is not None else None
+                channel_name = channel_el.text or "" if channel_el is not None else ""
+
+                is_sysmon = "sysmon" in provider_name.lower() or "sysmon" in channel_name.lower() or event_id in (1, 3, 7, 8, 10, 11, 12, 13, 22, 25)
+                source_type = "Sysmon" if is_sysmon else "Windows_Event"
+
                 time_el = system.find("TimeCreated") if system is not None else None
                 if time_el is None and system is not None:
                     time_el = system.find("timecreated")
@@ -201,28 +274,71 @@ class WindowsEventParser(BaseParser):
                         if name:
                             data_dict[name] = d.text or ""
 
-                username = data_dict.get("TargetUserName") or data_dict.get("AccountName") or data_dict.get("SubjectUserName")
-                src_ip = data_dict.get("IpAddress") or data_dict.get("SourceNetworkAddress")
+                username = data_dict.get("TargetUserName") or data_dict.get("AccountName") or data_dict.get("SubjectUserName") or data_dict.get("User")
+                src_ip = data_dict.get("IpAddress") or data_dict.get("SourceNetworkAddress") or data_dict.get("SourceIp")
                 if src_ip in ("-", "::1", "127.0.0.1"):
                     src_ip = None
                 src_port = data_dict.get("IpPort") or data_dict.get("SourcePort")
+                dst_ip = data_dict.get("DestinationIp") or data_dict.get("DestinationAddress")
+                dst_port = data_dict.get("DestinationPort")
 
-                desc = f"[Event {event_id}] {default_desc}"
-                if username:
-                    desc += f" (User: {username})"
-                if src_ip:
-                    desc += f" from {src_ip}"
+                # Sysmon specific fields
+                image = data_dict.get("Image") or data_dict.get("NewProcessName")
+                cmdline = data_dict.get("CommandLine") or data_dict.get("ProcessCommandLine")
+                parent_image = data_dict.get("ParentImage") or data_dict.get("ParentProcessName")
+                target_obj = data_dict.get("TargetObject") or data_dict.get("TargetFilename") or data_dict.get("TargetImage")
+                granted_access = data_dict.get("GrantedAccess")
+                query_name = data_dict.get("QueryName")
+
+                # Classify process creation suspiciousness
+                if event_id in (4688, 1):
+                    cmd_check = f"{cmdline or ''} {image or ''}".lower()
+                    suspicious_tokens = (
+                        "-enc", "-encodedcommand", "powershell", "certutil", "mshta", "vssadmin",
+                        "mimikatz", "netsh advfirewall", "downloadstring", "downloadfile",
+                        "invoke-expression", "-w hidden", "-windowstyle hidden", "wscript",
+                        "cscript", "rundll32", "regsvr32", "bitsadmin", "sekurlsa"
+                    )
+                    if any(t in cmd_check for t in suspicious_tokens):
+                        event_type = "windows_suspicious_process" if event_id == 4688 else "sysmon_suspicious_process"
+
+                prefix = f"[Sysmon Event {event_id}]" if is_sysmon else f"[Event {event_id}]"
+                if is_sysmon:
+                    if event_id == 1:
+                        desc = f"{prefix} Process Created: {image or 'Unknown'}"
+                        if cmdline:
+                            desc += f" - CommandLine: {cmdline}"
+                        if parent_image:
+                            desc += f" (Parent: {parent_image})"
+                    elif event_id == 3:
+                        desc = f"{prefix} Network Connection: {image or 'Process'} -> {dst_ip or 'Remote'}:{dst_port or 'Port'}"
+                    elif event_id == 10:
+                        desc = f"{prefix} Process Access: {data_dict.get('SourceImage', 'Unknown')} accessed {target_obj or 'Target'} (GrantedAccess: {granted_access or 'Unknown'})"
+                    elif event_id == 11:
+                        desc = f"{prefix} File Created: {target_obj or 'File'} by {image or 'Process'}"
+                    elif event_id == 13:
+                        desc = f"{prefix} Registry Value Set: {target_obj or 'Key'} by {image or 'Process'}"
+                    elif event_id == 22:
+                        desc = f"{prefix} DNS Query: {query_name or 'Domain'} by {image or 'Process'}"
+                    else:
+                        desc = f"{prefix} {default_desc}"
+                else:
+                    desc = f"{prefix} {default_desc}"
+                    if username:
+                        desc += f" (User: {username})"
+                    if src_ip:
+                        desc += f" from {src_ip}"
 
                 events.append({
-                    "source_type": "Windows_Event",
+                    "source_type": source_type,
                     "timestamp": timestamp,
                     "event_type": event_type,
                     "description": desc,
                     "event_id": event_id,
                     "source_ip": src_ip,
-                    "destination_ip": None,
+                    "destination_ip": dst_ip,
                     "source_port": int(src_port) if src_port and str(src_port).isdigit() else None,
-                    "destination_port": None,
+                    "destination_port": int(dst_port) if dst_port and str(dst_port).isdigit() else None,
                     "username": username,
                     "raw_log": ET.tostring(node, encoding="utf-8").decode("utf-8", errors="replace")
                 })

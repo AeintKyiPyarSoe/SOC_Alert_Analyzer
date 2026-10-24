@@ -445,6 +445,120 @@ class HostSecuritySensor:
             "monitoring_active": stream_manager.host_monitoring_active
         }
 
+    def is_firewall_enabled(self) -> Optional[bool]:
+        """Returns True if the host firewall is enabled, False if disabled, None if indeterminate."""
+        if self.os_type == "Windows":
+            try:
+                res = subprocess.run(
+                    ["netsh", "advfirewall", "show", "allprofiles"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                output = res.stdout or ""
+                if "State                                 OFF" in output:
+                    return False
+                if "State                                 ON" in output:
+                    return True
+            except Exception:
+                pass
+        elif self.os_type == "Linux":
+            try:
+                res = subprocess.run(["ufw", "status"], capture_output=True, text=True, timeout=2)
+                out = (res.stdout or "").lower()
+                if "status: active" in out:
+                    return True
+                if "status: inactive" in out:
+                    return False
+            except Exception:
+                pass
+        return None
+
+    def assess_socket_reachability(self, ip: str, port: int) -> Dict[str, Any]:
+        """
+        Distinguishes listening socket binding from confirmed network reachability.
+        Evaluates interface assignments, routability, and firewall posture.
+        """
+        ip_clean = (ip or "").strip()
+        is_loopback = ip_clean in ("127.0.0.1", "::1", "localhost")
+        is_wildcard = ip_clean in ("0.0.0.0", "::", "")
+
+        # Discover active, UP host network interfaces
+        active_interfaces: List[str] = []
+        has_public_ip = False
+        has_lan_ip = False
+
+        try:
+            stats = psutil.net_if_stats()
+            addrs = psutil.net_if_addrs()
+            for iface, addr_list in addrs.items():
+                iface_stat = stats.get(iface)
+                if iface_stat and not iface_stat.isup:
+                    continue
+                for a in addr_list:
+                    if a.family == socket.AF_INET:
+                        addr_str = a.address
+                        if not addr_str.startswith("127."):
+                            active_interfaces.append(addr_str)
+                            if IPClassifier.is_public_ip(addr_str):
+                                has_public_ip = True
+                            else:
+                                has_lan_ip = True
+        except Exception:
+            pass
+
+        # Check firewall mitigation
+        fw_active = self.is_firewall_enabled()
+        if fw_active is True:
+            fw_mitigation = "FILTERED"
+        elif fw_active is False:
+            fw_mitigation = "UNFILTERED_EXPOSED"
+        else:
+            fw_mitigation = "UNKNOWN"
+
+        if is_loopback:
+            reachability = "LOOPBACK_ONLY"
+            exposure_tier = "LOW"
+            summary = f"Socket bound strictly to loopback ({ip_clean}:{port}). Inaccessible to external or local network hosts."
+        elif is_wildcard:
+            if has_public_ip:
+                reachability = "INTERNET_EXPOSED"
+                exposure_tier = "CRITICAL" if fw_mitigation != "FILTERED" else "HIGH"
+                summary = f"Socket bound to wildcard ({ip_clean}:{port}) with confirmed public interface reachability ({active_interfaces}). Firewall: {fw_mitigation}."
+            elif has_lan_ip:
+                reachability = "LAN_ACCESSIBLE"
+                exposure_tier = "HIGH" if fw_mitigation != "FILTERED" else "MEDIUM"
+                summary = f"Socket bound to wildcard ({ip_clean}:{port}) accessible to local subnet via {active_interfaces}. Firewall: {fw_mitigation}."
+            else:
+                reachability = "HOST_ISOLATED"
+                exposure_tier = "LOW"
+                summary = f"Socket bound to wildcard ({ip_clean}:{port}) but no active non-loopback network interfaces detected."
+        else:
+            if IPClassifier.is_public_ip(ip_clean):
+                reachability = "INTERNET_EXPOSED"
+                exposure_tier = "CRITICAL" if fw_mitigation != "FILTERED" else "HIGH"
+                summary = f"Socket bound directly to public IP ({ip_clean}:{port}). Confirmed internet-routable reachability. Firewall: {fw_mitigation}."
+            elif not is_loopback:
+                reachability = "LAN_ACCESSIBLE"
+                exposure_tier = "HIGH" if fw_mitigation != "FILTERED" else "MEDIUM"
+                summary = f"Socket bound to local subnet IP ({ip_clean}:{port}). Reachable within private LAN. Firewall: {fw_mitigation}."
+            else:
+                reachability = "LOOPBACK_ONLY"
+                exposure_tier = "LOW"
+                summary = f"Socket bound to {ip_clean}:{port} (Loopback only)."
+
+        return {
+            "binding": ip_clean or "0.0.0.0",
+            "port": port,
+            "binding_type": "LOOPBACK" if is_loopback else ("WILDCARD" if is_wildcard else "SPECIFIC_INTERFACE"),
+            "reachability": reachability,
+            "exposure_tier": exposure_tier,
+            "firewall_mitigation": fw_mitigation,
+            "active_interfaces": active_interfaces,
+            "has_public_reachability": (reachability == "INTERNET_EXPOSED"),
+            "summary": summary
+        }
+
     def audit_network_sockets(self) -> List[Dict[str, Any]]:
         """Audits host network sockets for exposed high-risk listening ports and suspicious outbound connections."""
         events = []
@@ -476,6 +590,8 @@ class HostSecuritySensor:
                         if port in (8080, 8000) and any(d in proc_lower for d in ["python", "uvicorn", "code", "node"]):
                             continue
 
+                        reach = self.assess_socket_reachability(ip, port)
+
                         sig = f"listen_{port}_{conn.pid}"
                         if not self._is_signature_seen_recent(sig):
 
@@ -485,13 +601,16 @@ class HostSecuritySensor:
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "event_type": "insecure_listening_port",
                                 "mitre_technique": "T1046",
-                                "description": f"Exposed High-Risk Listener: {service_name} on wildcard interface {ip}:{port} by process '{proc_name}' (PID: {conn.pid})",
+                                "description": f"Exposed Listener: {service_name} on {ip}:{port} [{reach['reachability']}] (Exposure: {reach['exposure_tier']}, FW: {reach['firewall_mitigation']}) by process '{proc_name}' (PID: {conn.pid})",
                                 "source_ip": "0.0.0.0",  # nosec: B104
                                 "destination_ip": None,
                                 "source_port": port,
                                 "destination_port": None,
                                 "username": None,
-                                "raw_log": f"Status: LISTEN | LocalAddr: {ip}:{port} | Process: {proc_name} (PID {conn.pid}) | Detail: {reason}"
+                                "reachability": reach["reachability"],
+                                "exposure_tier": reach["exposure_tier"],
+                                "firewall_mitigation": reach["firewall_mitigation"],
+                                "raw_log": f"Status: LISTEN | LocalAddr: {ip}:{port} | Process: {proc_name} (PID {conn.pid}) | Reachability: {reach['reachability']} | Exposure: {reach['exposure_tier']} | FW: {reach['firewall_mitigation']} | Detail: {reach['summary']} | Reason: {reason}"
                             })
 
                 elif conn.status == "ESTABLISHED" and conn.raddr:

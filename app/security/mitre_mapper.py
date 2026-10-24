@@ -11,6 +11,34 @@ MITRE_TECHNIQUES: Dict[str, Dict[str, str]] = {
         "description": "Adversaries may attempt to dump credentials to obtain account login and credential material.",
         "url": "https://attack.mitre.org/techniques/T1003/"
     },
+    "T1003.001": {
+        "id": "T1003.001",
+        "name": "OS Credential Dumping: LSASS Memory",
+        "tactic": "Credential Access",
+        "description": "Adversaries may attempt to access and dump credentials from the Local Security Authority Subsystem Service (LSASS) process memory.",
+        "url": "https://attack.mitre.org/techniques/T1003/001/"
+    },
+    "T1021.002": {
+        "id": "T1021.002",
+        "name": "Remote Services: SMB/Windows Admin Shares",
+        "tactic": "Lateral Movement",
+        "description": "Adversaries may leverage SMB/Windows administrative shares (such as C$ or ADMIN$) to move laterally within an environment.",
+        "url": "https://attack.mitre.org/techniques/T1021/002/"
+    },
+    "T1071.004": {
+        "id": "T1071.004",
+        "name": "Application Layer Protocol: DNS",
+        "tactic": "Command and Control",
+        "description": "Adversaries may communicate using the Domain Name System (DNS) application layer protocol to avoid detection and network filtering.",
+        "url": "https://attack.mitre.org/techniques/T1071/004/"
+    },
+    "T1218": {
+        "id": "T1218",
+        "name": "System Binary Proxy Execution",
+        "tactic": "Defense Evasion",
+        "description": "Adversaries may bypass process and signature-based defenses by proxying execution of malicious code with signed or trusted binaries.",
+        "url": "https://attack.mitre.org/techniques/T1218/"
+    },
     "T1105": {
         "id": "T1105",
         "name": "Ingress Tool Transfer",
@@ -312,8 +340,24 @@ class MitreMapper:
         desc = str(description or "").strip().lower()
 
         # Credential dumping / Mimikatz / LSASS
-        if "credential_dumping" in event or "mimikatz" in desc or "lsass" in desc or "credential dumping" in desc:
+        if "lsass" in desc or "sysmon_process_access" in event:
+            return "T1003.001"
+        if "credential_dumping" in event or "mimikatz" in desc or "credential dumping" in desc:
             return "T1003"
+
+        # Ingress tool transfer / LOLBINs
+        if "certutil" in desc and ("-urlcache" in desc or "http" in desc or "split" in desc):
+            return "T1105"
+        if "mshta" in desc or "rundll32" in desc:
+            return "T1218"
+
+        # Lateral movement: SMB / Windows Admin Shares
+        if "windows_network_share" in event or ":445" in desc or "ipc$" in desc or "admin$" in desc:
+            return "T1021.002"
+
+        # DNS C2 Query / Tunneling
+        if "sysmon_dns_query" in event or ("dns query" in desc and ("dynu" in desc or "c2" in desc or "beacon" in desc)):
+            return "T1071.004"
 
         # Brute force / Auth failure
         if "ssh_authentication_failure" in event or "ssh_invalid_user" in event or "windows_failed_logon" in event:
@@ -338,7 +382,7 @@ class MitreMapper:
             return "T1136.001"
 
         # Persistence: Services & Tasks & Startup
-        if "persistence_startup_created" in event or "startup folder" in desc or "autostart" in desc:
+        if "persistence_startup_created" in event or "sysmon_registry_event" in event or "currentversion\\run" in desc or "startup folder" in desc or "autostart" in desc or "registry value set" in desc:
             return "T1547.001"
         if "windows_service_installed" in event or "service installed" in desc:
             return "T1543.003"

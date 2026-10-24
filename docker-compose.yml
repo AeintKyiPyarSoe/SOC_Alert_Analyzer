@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-soc_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_secure_db_pass_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_dev_local_only_insecure_db_pass}
       POSTGRES_DB: ${POSTGRES_DB:-soc_alert_db}
     # Security: Restrict direct database exposure to host. Database is only accessible
     # on the internal Docker network. Uncomment 127.0.0.1:5432 only for local debugging.
@@ -32,14 +32,16 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-soc_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_secure_db_pass_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soc_dev_local_only_insecure_db_pass}
       POSTGRES_DB: ${POSTGRES_DB:-soc_alert_db}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-admin_soc_analyzer_key_secure_2026}
-      ANALYST_API_KEY: ${ANALYST_API_KEY:-analyst_soc_analyzer_key_secure_2026}
-      SECRET_KEY: ${SECRET_KEY:-soc_analyzer_secret_session_key_32bytes_long}
+      # Security: If not specified in .env, development mode auto-generates unique instance keys.
+      # In production mode (ENVIRONMENT=production), non-default 32+ character keys are strictly enforced.
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ANALYST_API_KEY: ${ANALYST_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-}
       DEMO_MODE: ${DEMO_MODE:-false}
       CORRELATION_WINDOW_SECONDS: ${CORRELATION_WINDOW_SECONDS:-300}
       DEDUP_WINDOW_SECONDS: ${DEDUP_WINDOW_SECONDS:-300}

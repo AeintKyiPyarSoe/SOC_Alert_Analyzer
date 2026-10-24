@@ -2,9 +2,9 @@
 
 **Date**: October 25, 2026  
 **Target Repository**: [SOC_Alert_Analyzer](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer)  
-**Release Version**: v1.2.8 (Latest Active Release)  
+**Release Version**: v1.2.9 (Latest Active Release)  
 **Execution Environment**: Local Workspace (Source of Truth)  
-**Final Test Status**: **237 passed, 0 failed (100% passing rate, 88% Windows / 86% Linux coverage)**  
+**Final Test Status**: **275 passed, 0 failed (100% passing rate, 88% overall code coverage)**  
 **Code Quality**: Flake8: 0 fatal/syntax errors (`E9,F63,F7,F82`); Bandit AST SAST: 0 Medium/High issues; Pip-Audit: 0 known vulnerabilities  
 
 ---
@@ -295,4 +295,29 @@ Building directly upon the v1.2.7 release, SOC Alert Analyzer v1.2.8 introduced 
 - **SHA-256 Digest**: `8d5838dbb07f9bcddff59c1ecc36bdd503ce8aec87a382eab5460f19e9b9ab1b`
 - **Release Verification**: Recorded in `dist/SHA256SUMS.txt` and published to GitHub Release `v1.2.8`.
 - **Live Smoke Test**: Binary executed successfully in isolation and GitHub Actions CI; verified `--help`, `/` root route, `/api/v1/auth/me` healthcheck, `/reports/mitre` UI, and sample alert ingestion.
+
+---
+
+## 10. Version 1.2.9 Production Security Hardening, Endpoint Attack Telemetry & SBOM Audit
+
+### Executive Overview (v1.2.9)
+Version 1.2.9 delivers targeted, high-value defensive security improvements, supply-chain transparency, and behavioral telemetry fidelity:
+1. **Docker Authentication Defaults & Production Hardening**: Eliminated predictable fallback credentials in Docker Compose and established fail-fast production guards. Development containers now generate unique instance credentials in `.auth_credentials`, and production environments reject known default keys or duplicate roles with `RuntimeError`.
+2. **Network Exposure & Socket Reachability Assessment**: Enhanced `HostSecuritySensor` to differentiate listening socket bindings from confirmed reachability across local loopback, LAN subnets, and public interfaces, factoring in host firewall filtering.
+3. **Realistic Endpoint Attack Evaluation Lab**: Formulated a comprehensive benchmark evaluating realistic Sysmon and Windows Event logs across the MITRE ATT&CK kill-chain (18 scenarios), confirming 100% precision and recall with 0 false positives on difficult benign administrator workloads.
+4. **Reproducible Builds & Software Bill of Materials**: Introduced `requirements.lock` and standard CycloneDX v1.5 (`sbom.json`) and SPDX v2.3 (`sbom.spdx.json`) machine-readable SBOMs.
+5. **Test Suite & Coverage Expansion**: Automated test suite expanded to **275 passed tests (100% pass rate)** with **88% overall code coverage**.
+6. **Standalone Binary Rebuild**: Rebuilt `dist/SOC_Alert_Analyzer.exe` (54,098,115 bytes) and synchronized SHA-256 integrity verification (`be5c02e3aa5da88b8c25ba76e8a9fe9dc42e93059f174c3a629a2e9894f976d1`).
+
+---
+
+### Key Verification Metrics (v1.2.9)
+- **Automated Pytest Results**: **275 passed, 0 failed in 34.76s**
+- **Overall Code Coverage**: **88%** (3,564 statements evaluated, exceeding 85% CI floor)
+- **Production Guard Regression Coverage**: 28 tests in `tests/test_production_security_guards.py`
+- **Socket Reachability Tests**: 5 tests in `tests/test_network_reachability.py`
+- **Endpoint Attack Evaluation**: 18 scenarios (12 malicious, 6 benign) achieving 100% accuracy, 0 FP, 0 FN in `tests/test_endpoint_attack_evaluation.py`
+- **SBOM Integrity**: 3 tests in `tests/test_sbom_and_lockfile.py`
+- **Static Code Analysis & Security**: 0 Flake8 errors, 0 Bandit High/Medium issues, clean pip-audit
+
 

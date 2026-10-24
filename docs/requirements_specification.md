@@ -229,6 +229,10 @@ SOC Alert Analyzer operates as a standalone web application comprised of a Pytho
 
 ### 4.5 Portability & Deployment
 - **NFR-PORT-01**: The application stack SHALL be fully deployable on any host with Docker and Docker Compose via a single command (`docker-compose up --build`).
+- **FR-SEC-07 (Production Key Prohibition)**: The application SHALL strictly forbid known default, placeholder, or predictable keys (`SECRET_KEY`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD`) when `ENVIRONMENT=production`, failing fast with a descriptive `RuntimeError`.
+- **FR-NET-01 (Socket Reachability Assessment)**: The host security sensor SHALL distinguish listening socket binding from confirmed network reachability (`LOOPBACK_ONLY`, `LAN_ACCESSIBLE`, `INTERNET_EXPOSED`, `HOST_ISOLATED`) and evaluate host firewall mitigation status.
+- **FR-EVAL-02 (Endpoint Attack Telemetry Benchmark)**: The system SHALL maintain a reproducible benchmark evaluating realistic Sysmon and Windows Event logs across the MITRE ATT&CK kill-chain with zero false positives on benign admin tasks.
+- **NFR-SC-01 (Supply-Chain SBOM & Lockfile)**: The repository SHALL provide automated supply-chain transparency through a pinned `requirements.lock` and standard CycloneDX v1.5 (`sbom.json`) and SPDX v2.3 (`sbom.spdx.json`) manifests.
 
 ---
 

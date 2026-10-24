@@ -2,13 +2,14 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-237%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
-[![Coverage](https://img.shields.io/badge/coverage-86%25%20(Linux)%20%7C%2088%25%20(Windows)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-275%20passed-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Coverage](https://img.shields.io/badge/coverage-88%25%20(Overall)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
 [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-Enterprise%20v14-6F42C1.svg?style=flat)](https://attack.mitre.org/)
 [![UI/UX](https://img.shields.io/badge/design%20system-Nicole’s%20Security%20Lab-A0EDC5.svg?style=flat&logoColor=black)](docs/UI_UX_specification.md)
-[![Release](https://img.shields.io/badge/release-v1.2.8-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.9-orange.svg?style=flat&logo=windows)](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases)
+[![SBOM](https://img.shields.io/badge/SBOM-CycloneDX%20v1.5%20%7C%20SPDX-blue.svg)](sbom.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Less noise. More clarity.**  
@@ -127,9 +128,9 @@ The behavioral detection engine is empirically evaluated using both development 
    Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from the [Latest Release](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
 
 2. **Verify Cryptographic SHA-256 Integrity**:
-   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (26,576,796 bytes) is:
+   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (54,098,115 bytes) is:
    ```text
-   8d5838dbb07f9bcddff59c1ecc36bdd503ce8aec87a382eab5460f19e9b9ab1b  SOC_Alert_Analyzer.exe
+   be5c02e3aa5da88b8c25ba76e8a9fe9dc42e93059f174c3a629a2e9894f976d1  SOC_Alert_Analyzer.exe
    ```
 
    * **Method 1: Windows PowerShell**
@@ -142,7 +143,7 @@ The behavioral detection engine is empirically evaluated using both development 
      ```
    * **Method 3: Standalone Verification Script (Python)**
      ```powershell
-     python scripts/verify_release_checksum.py --verify SHA256SUMS.txt
+     python scripts/verify_release_checksum.py --verify dist/SHA256SUMS.txt
      ```
 
 3. **Launch the Application**:
@@ -169,14 +170,15 @@ Containerized deployment simplifies dependency management and allows security an
 git clone https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer.git
 cd SOC_Alert_Analyzer
 
-# 2. Build and launch containers (works out of the box with zero setup)
+# 2. Build and launch containers (secure defaults out of the box)
 docker compose up -d --build
-
-# (Optional: to customize credentials, create a .env file from template)
-# cp .env.example .env
 ```
 Navigate to `http://localhost:8000`.
 
+* **Production Security Guards**:
+  * In development mode, the container auto-generates instance-unique cryptographic keys in `.auth_credentials` rather than using static shared credentials.
+  * In production mode (`ENVIRONMENT=production`), the application strictly enforces non-default, high-entropy secrets (≥ 32 characters) and fails fast with `RuntimeError` if known default or placeholder keys are detected.
+  * 28 regression tests in `tests/test_production_security_guards.py` verify that default keys cannot boot in production.
 * **Hardened Security**: The application runs under an unprivileged user (`socuser:socgroup`). PostgreSQL is restricted to the internal Docker bridge network (`soc_internal_net`).
 * **Automated Healthchecks**: Both `db` and `web` services feature integrated healthchecks to ensure reliable orchestration.
 * **Volume Mounts**: The `sample_alerts/` directory is mounted read-only (`:ro`) into the container so analysts can test immediately without live API keys.
@@ -195,8 +197,10 @@ source venv/bin/activate  # On Windows: .\venv\Scripts\Activate.ps1
 # 3. Configure environment
 cp .env.example .env
 
-# 4. Install dependencies
+# 4. Install dependencies (or use reproducible lockfile)
 pip install -r requirements.txt
+# Alternatively, for strict reproducible environments:
+# pip install -r requirements.lock
 
 # 5. Launch application
 python launcher.py
@@ -205,9 +209,49 @@ Open your browser to `http://127.0.0.1:8000`.
 
 ---
 
+## 🔒 Reproducible Builds & Software Bill of Materials (SBOM)
+
+SOC Alert Analyzer provides automated supply-chain security artifacts conforming to international standards:
+* **Dependency Lockfile**: [`requirements.lock`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/requirements.lock) pins exact cryptographic package versions across the entire stack.
+* **CycloneDX SBOM**: [`sbom.json`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/sbom.json) provides CycloneDX v1.5 standard JSON inventory with package URLs (PURLs).
+* **SPDX SBOM**: [`sbom.spdx.json`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/sbom.spdx.json) provides SPDX v2.3 compliant machine-readable Bill of Materials.
+* **Re-generation Script**:
+  ```bash
+  python scripts/generate_sbom.py
+  ```
+
+---
+
+## 🔬 Empirical Detection & Endpoint Attack Evaluations
+
+SOC Alert Analyzer validates detection fidelity across two empirical benchmarks:
+1. **Behavioral Process Baseline & Held-Out Scenarios (50 Scenarios)**:
+   ```bash
+   python scripts/evaluate_detection.py
+   ```
+   * Results: **100% Precision, 100% Recall, 0 False Positives, 0 False Negatives**.
+2. **Realistic Endpoint Attacks with Sysmon & Windows Events (18 Scenarios)**:
+   ```bash
+   python scripts/evaluate_endpoint_attacks.py
+   ```
+   * Evaluates Certutil LOLBINs, Mshta proxy execution, Obfuscated PowerShell, Audit Log Clearing, Firewall Disablement, Mimikatz LSASS access, Registry Run Key persistence, Malicious Service installation, Admin group manipulation, SMB admin share probes, and C2 DNS queries alongside difficult benign administrator workflows.
+   * Results: **100% Precision, 100% Recall, 0 False Positives**. Report saved in [`docs/endpoint_attack_evaluation_report.json`](file:///C:/Siam-BSc-IT/VibeCode/SOC_Alert_Analyzer/docs/endpoint_attack_evaluation_report.json).
+
+---
+
+## 🌐 Network Exposure & Reachability Assessment
+
+The host security sensor differentiates raw socket listening states from confirmed network reachability:
+* **`LOOPBACK_ONLY`**: Bound strictly to `127.0.0.1` / `::1`. Inaccessible to external or local network hosts.
+* **`LAN_ACCESSIBLE`**: Bound to `0.0.0.0` or private RFC 1918 addresses on active LAN adapters. Reachable only within the local subnet.
+* **`INTERNET_EXPOSED`**: Bound to wildcard with an active public routable IPv4/IPv6 address. Confirmed public network reachability.
+* **Firewall Mitigation**: Cross-references host firewall status (`FILTERED` vs `UNFILTERED_EXPOSED`).
+
+---
+
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains an automated pytest test suite (**237 passing tests**, 100% pass rate, 86% on Linux / 88% on Windows with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, and risk calculation logic:
+The repository maintains an automated pytest test suite (**275 passing tests**, 100% pass rate, 88% overall code coverage with an enforced >=85% CI floor) verifying all defensive security, parsing, session management, CSRF defense, correlation, risk calculation, and production guard logic:
 
 ```powershell
 python -m pytest -v --cov=app --cov-report=term-missing

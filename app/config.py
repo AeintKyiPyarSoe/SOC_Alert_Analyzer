@@ -86,10 +86,58 @@ def _load_or_generate_local_credentials(data_dir: Path) -> dict:
 
 class Settings:
     PROJECT_NAME: str = "SOC Alert Analyzer"
-    VERSION: str = "1.2.8"
+    VERSION: str = "1.2.9"
     API_V1_STR: str = "/api/v1"
     BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
+
+    PROHIBITED_PRODUCTION_KEYS = {
+        # Known default docker-compose keys and previous placeholders
+        "soc_analyzer_secret_session_key_32bytes_long",
+        "admin_soc_analyzer_key_secure_2026",
+        "analyst_soc_analyzer_key_secure_2026",
+        "viewer_soc_analyzer_key_secure_2026",
+        "soc_secure_db_pass_2026",
+        "soc_dev_local_only_insecure_db_pass",
+        "soc-analyzer-super-secret-production-key-change-me",
+        "admin-prod-secret-change-in-production-minimum-32-chars",
+        "analyst-prod-secret-change-in-production-minimum-32-chars",
+        "viewer-prod-secret-change-in-production-minimum-32-chars",
+        "generate_and_insert_a_random_32_character_secret_here",
+        "admin_generate_a_strong_random_key_here",
+        "analyst_generate_a_strong_random_key_here",
+        "replace_with_strong_database_password",
+        # Common insecure / test placeholders
+        "insecure-test-secret-key-for-testing-only-32bytes",
+        "admin-insecure-test-key-32chars-minimum",
+        "analyst-insecure-test-key-32chars-minimum",
+        "admin",
+        "analyst",
+        "password",
+        "secret",
+        "changeme",
+        "change-me",
+        "default",
+        "12345678",
+        "admin123",
+        "root",
+        "postgres",
+    }
+
+    PROHIBITED_SUBSTRINGS = (
+        "change-me",
+        "changeme",
+        "default",
+        "placeholder",
+        "test-key",
+        "secret-key",
+        "admin_soc_analyzer_key",
+        "analyst_soc_analyzer_key",
+        "soc_analyzer_secret",
+        "soc_secure_db_pass",
+        "replace_with_",
+        "generate_a_",
+    )
 
     def __init__(self):
         self.ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
@@ -139,9 +187,14 @@ class Settings:
 
         if self.ENVIRONMENT == "production":
             # Strict validation: require explicit non-default secrets in production
-            if not _env_secret or len(_env_secret) < 32 or "change-me" in _env_secret.lower():
+            if not _env_secret or len(_env_secret) < 32:
                 raise RuntimeError(
                     "CRITICAL SECURITY ERROR: SECRET_KEY must be set to a secure string (≥ 32 chars) in production."
+                )
+            _secret_lower = _env_secret.lower()
+            if _secret_lower in self.PROHIBITED_PRODUCTION_KEYS or any(sub in _secret_lower for sub in self.PROHIBITED_SUBSTRINGS):
+                raise RuntimeError(
+                    "CRITICAL SECURITY ERROR: SECRET_KEY must be set to a secure string (≥ 32 chars) in production (cannot use a known default or placeholder)."
                 )
             if not self.AUTH_ENABLED:
                 raise RuntimeError(
@@ -151,10 +204,51 @@ class Settings:
                 raise RuntimeError(
                     "CRITICAL SECURITY ERROR: ALLOW_INSECURE_AUTH_DISABLED cannot be enabled when ENVIRONMENT is 'production'."
                 )
-            if not _env_admin_key or "default" in _env_admin_key.lower():
+            if not _env_admin_key or len(_env_admin_key) < 16:
                 raise RuntimeError(
                     "CRITICAL SECURITY ERROR: ADMIN_API_KEY must be set to a secure value in production."
                 )
+            _admin_lower = _env_admin_key.lower()
+            if _admin_lower in self.PROHIBITED_PRODUCTION_KEYS or any(sub in _admin_lower for sub in self.PROHIBITED_SUBSTRINGS):
+                raise RuntimeError(
+                    "CRITICAL SECURITY ERROR: ADMIN_API_KEY must be set to a secure value in production (cannot use a known default key)."
+                )
+            if _env_analyst_key:
+                if len(_env_analyst_key) < 16:
+                    raise RuntimeError(
+                        "CRITICAL SECURITY ERROR: ANALYST_API_KEY must be set to a secure value in production."
+                    )
+                _analyst_lower = _env_analyst_key.lower()
+                if _analyst_lower in self.PROHIBITED_PRODUCTION_KEYS or any(sub in _analyst_lower for sub in self.PROHIBITED_SUBSTRINGS):
+                    raise RuntimeError(
+                        "CRITICAL SECURITY ERROR: ANALYST_API_KEY must be set to a secure value in production (cannot use a known default key)."
+                    )
+                if _env_analyst_key == _env_admin_key:
+                    raise RuntimeError(
+                        "CRITICAL SECURITY ERROR: ANALYST_API_KEY cannot be identical to ADMIN_API_KEY in production."
+                    )
+                if _env_analyst_key == _env_secret:
+                    raise RuntimeError(
+                        "CRITICAL SECURITY ERROR: ANALYST_API_KEY cannot be identical to SECRET_KEY in production."
+                    )
+
+            if _env_admin_key == _env_secret:
+                raise RuntimeError(
+                    "CRITICAL SECURITY ERROR: ADMIN_API_KEY cannot be identical to SECRET_KEY in production."
+                )
+
+            # Database password validation if PostgreSQL is configured
+            if _pg_pass:
+                _pg_pass_lower = _pg_pass.lower()
+                if (
+                    len(_pg_pass) < 12
+                    or _pg_pass_lower in self.PROHIBITED_PRODUCTION_KEYS
+                    or any(sub in _pg_pass_lower for sub in self.PROHIBITED_SUBSTRINGS)
+                ):
+                    raise RuntimeError(
+                        "CRITICAL SECURITY ERROR: POSTGRES_PASSWORD must be a strong non-default password (≥ 12 chars) in production."
+                    )
+
             self.SECRET_KEY: str = _env_secret
             self.ADMIN_API_KEY: Optional[str] = _env_admin_key
             self.ANALYST_API_KEY: Optional[str] = _env_analyst_key

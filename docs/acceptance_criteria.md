@@ -314,10 +314,34 @@ Each feature includes:
 - **When** the user opens `http://localhost:8000` in a web browser,
 - **Then** the SOC Alert Analyzer dashboard loads successfully.
 
+##### Scenario 9.3: Production Default Key Prohibition
+- **Given** the environment variable `ENVIRONMENT=production`,
+- **When** any known default or placeholder secret key or weak password is provided,
+- **Then** the application initialization immediately raises a descriptive `RuntimeError`.
+
+##### Scenario 9.4: Socket Reachability vs Listener Differentiation
+- **Given** an audited listening socket on the host,
+- **When** the socket is evaluated for reachability,
+- **Then** it is accurately classified into `LOOPBACK_ONLY`, `LAN_ACCESSIBLE`, `INTERNET_EXPOSED`, or `HOST_ISOLATED` with firewall mitigation context.
+
+##### Scenario 9.5: Realistic Endpoint Attack Evaluation
+- **Given** realistic Sysmon and Windows Event logs containing cyber kill-chain attacks and benign tasks,
+- **When** processed by the detection benchmark runner,
+- **Then** all malicious scenarios are detected with 100% precision and zero false positives.
+
+##### Scenario 9.6: Supply-Chain SBOM and Dependency Locking
+- **Given** release artifacts,
+- **When** verified against dependency standards,
+- **Then** valid `requirements.lock`, CycloneDX v1.5 `sbom.json`, and SPDX v2.3 `sbom.spdx.json` are present and verified.
+
 #### Verification Checklist
-- [ ] `docker-compose.yml` launches both database and web application services.
-- [ ] Database automatically runs migrations/tables on initial startup.
-- [ ] Persistent Docker volume configured for PostgreSQL data.
+- [x] `docker-compose.yml` launches both database and web application services.
+- [x] Database automatically runs migrations/tables on initial startup.
+- [x] Persistent Docker volume configured for PostgreSQL data.
+- [x] Production security guards forbid default keys across 28 regression tests.
+- [x] Socket reachability engine assesses interface routability and firewall state.
+- [x] Sysmon and Windows Event logs evaluated across 18 benchmark scenarios.
+- [x] CycloneDX v1.5 and SPDX v2.3 SBOMs generated and verified.
 
 ---
 
