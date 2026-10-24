@@ -1,9 +1,12 @@
 import os
 import sys
 import uuid
+import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import asyncio
 from fastapi import FastAPI, Request, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
@@ -37,7 +40,10 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
 
 def initial_host_baseline():
-    """Runs a baseline security audit on the local machine on startup if database is empty."""
+    """Runs a baseline security audit on the local machine on startup if database is empty and monitoring is active."""
+    if not stream_manager.host_monitoring_active:
+        logger.info("Skipping initial host baseline audit because host monitoring is paused/disabled.")
+        return
     db = SessionLocal()
     try:
         if db.query(Alert).count() == 0:
@@ -51,17 +57,17 @@ def initial_host_baseline():
 async def lifespan(app: FastAPI):
     # Startup: initialize database tables & audit local host baseline
     init_db()
-    initial_host_baseline()
-    # Authoritative configuration initialization for monitoring and simulation
-    if settings.HOST_MONITORING_ENABLED:
-        stream_manager.start_host_monitoring()
+    # Authoritative configuration initialization for monitoring and simulation respecting persisted preferences
+    if stream_manager.host_monitoring_active:
+        initial_host_baseline()
+        stream_manager.start_host_monitoring(persist=False)
     else:
-        stream_manager.stop_host_monitoring()
+        stream_manager.stop_host_monitoring(persist=False)
 
-    if settings.SIMULATION_ENABLED:
-        stream_manager.start_simulation()
+    if stream_manager.simulation_active:
+        stream_manager.start_simulation(persist=False)
     else:
-        stream_manager.stop_simulation()
+        stream_manager.stop_simulation(persist=False)
 
     yield
 
@@ -107,6 +113,7 @@ async def security_headers_middleware(request: Request, call_next):
 # Static files & Jinja2 Templates
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.globals["get_stream_status"] = lambda: stream_manager.get_status()
 
 # Mount API routes
 app.include_router(api_router, prefix=settings.API_V1_STR, tags=["Security Telemetry API"])
@@ -187,7 +194,7 @@ def dashboard_view(
     else:
         # Authenticated Analyst / Admin / Local Operator
         total_alerts_count = db.query(func.count(Alert.id)).scalar() or 0
-        if total_alerts_count == 0:
+        if total_alerts_count == 0 and stream_manager.host_monitoring_active:
             try:
                 host_sensor.run_full_audit(db)
             except Exception:
@@ -260,6 +267,7 @@ def dashboard_view(
             "serialized_alerts": serialized_alerts,
             "incidents": incidents,
             "host_info": host_info,
+            "stream_status": stream_manager.get_status(),
             "demo_mode": settings.DEMO_MODE,
             "user": user
         }

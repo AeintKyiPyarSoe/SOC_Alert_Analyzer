@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.11] - 2026-10-25
+
+### Added
+- **Host Sensor Lifecycle Decoupling & Complete Indicator Synchronization**:
+  - Decoupled WebSocket transport connection (`/ws/threats`) from host sensor operational state in `app/static/js/app.js`. `threatSocket.onopen` now triggers authoritative status synchronization (`initStreamStatus()`) rather than unilaterally asserting `liveText.textContent = 'HOST SENSOR: ACTIVE'`.
+  - Implemented single authoritative frontend rendering function `updateMonitoringUI(state)` synchronizing:
+    - Header live sensor pill and status text (`HOST SENSOR: ACTIVE` vs `HOST SENSOR: PAUSED`).
+    - Pill glow and pulsing dot (`.pulse-dot.paused` renders static gray dot without pulsation).
+    - Toolbar action buttons (`btn-toggle-host-monitor` and `btn-toggle-sim` with synchronized active/paused styling and icons).
+    - Data notice status strip and status tag (`Live Sensor` vs `Sensor Paused`).
+    - Host telemetry strip EDR mode label (`Native Host EDR Active` vs `Native Host EDR Paused`).
+  - Added window `focus` event listener in `app.js` to re-synchronize status automatically whenever the analyst returns to the dashboard tab.
+  - Added CSS classes `.live-sensor-pill.paused`, `.pulse-dot.paused`, and `.data-notice-status-tag.paused` in `app/static/css/styles.css`.
+- **Persistent Monitoring Preferences Across Restarts**:
+  - Added atomic JSON preference persistence via `save_monitoring_preferences` and `load_monitoring_preferences` in `app/config.py`.
+  - Persists monitoring preference in `DATA_DIR/monitoring_preferences.json` (%LOCALAPPDATA%\SOC_Alert_Analyzer on Windows standalone, /app/data on Docker), surviving restarts, binary re-launches, and container recreation.
+  - Hydrated `Settings.HOST_MONITORING_ENABLED` and `Settings.SIMULATION_ENABLED` on startup from persisted preferences.
+  - Safe against missing or corrupted files with robust fallback to environment variables and secure defaults.
+  - Preserved preference across clean application shutdown without saving or overwriting user preferences on process exit.
+- **Guarded Automatic Host Audits**:
+  - Guarded `initial_host_baseline()` in `app/main.py` to skip scanning when host monitoring is paused.
+  - Guarded dashboard zero-alerts host audit so it does not trigger an automatic scan while paused.
+- **Historical Alert Retention & Clear History Refinement**:
+  - Historical alerts are preserved in the workbench when host monitoring is paused.
+  - Refined `/api/v1/alerts/clear`: when called while host monitoring is paused, purges database records and in-memory deduplication signatures without re-running `host_sensor.run_full_audit(db)` or recreating baseline alerts (such as SMB port 445).
+  - Fixed `fetchAlertsFromApi()` in `app/static/js/app.js` to properly clear `SOC_STATE.alerts = []` and reset selection when an empty array `[]` is returned.
+- **Test Suite Expansion & Version Bump**:
+  - Bumped canonical application version to `v1.2.11` across `app/__init__.__version__`, `app.config.Settings.VERSION`, and `FastAPI` metadata.
+  - Expanded automated pytest suite to **296 passed (100%)** with **87.07% code coverage** (exceeding >=85% floor).
+  - Added regression test suite in `tests/test_monitoring_lifecycle.py` covering persistence, atomic writing, corrupted file recovery, clear-while-paused behavior, and manual audit behavior while paused.
+  - Regenerated CycloneDX v1.5 `sbom.json`, SPDX v2.3 `sbom.spdx.json`, and pinned `requirements.lock` for v1.2.11.
+
+---
+
 ## [1.2.10] - 2026-10-25
 
 ### Added

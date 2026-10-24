@@ -26,9 +26,11 @@
 
             <div class="header-right">
                 <!-- Host EDR Live Sensor Status Pill -->
-                <div class="live-sensor-pill" id="live-sensor-pill" title="Native Host Security Sensor & Live Telemetry Stream">
-                    <span class="pulse-dot"></span>
-                    <span id="live-sensor-text">HOST SENSOR: ACTIVE</span>
+                {% set _curr_stream = get_stream_status() if get_stream_status is defined else None %}
+                {% set _host_active = _curr_stream.host_monitoring_active if _curr_stream else True %}
+                <div class="live-sensor-pill {% if not _host_active %}paused{% else %}active{% endif %}" id="live-sensor-pill" title="{% if not _host_active %}Native Host Security Sensor: PAUSED (Historical data preserved){% else %}Native Host Security Sensor & Live Telemetry: ACTIVE{% endif %}">
+                    <span class="pulse-dot {% if not _host_active %}paused{% endif %}"></span>
+                    <span id="live-sensor-text">{% if not _host_active %}HOST SENSOR: PAUSED{% else %}HOST SENSOR: ACTIVE{% endif %}</span>
                 </div>
 
                 <!-- Navigation Links -->

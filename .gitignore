@@ -13,6 +13,8 @@ uploads/
 .env.local
 .env.*.local
 .auth_credentials
+monitoring_preferences.json
+.monitoring_preferences_*.tmp
 
 # Virtual environments
 .venv/
