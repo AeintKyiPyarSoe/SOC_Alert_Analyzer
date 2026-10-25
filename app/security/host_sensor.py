@@ -1044,29 +1044,29 @@ async def real_host_monitor_loop():
     while True:
         try:
             if stream_manager.host_monitoring_active:
-                db = SessionLocal()
-                try:
-                    if not initial_full_done or (tick % 10 == 0):
-                        new_alerts = host_sensor.run_full_audit(db, check_active=True)
-                        initial_full_done = True
-                    else:
-                        new_alerts = host_sensor.run_fast_audit(db, check_active=True)
+                def _audit_worker(full: bool):
+                    db_worker = SessionLocal()
+                    try:
+                        if full:
+                            alerts = host_sensor.run_full_audit(db_worker, check_active=True)
+                        else:
+                            alerts = host_sensor.run_fast_audit(db_worker, check_active=True)
 
-                    if not stream_manager.host_monitoring_active:
-                        logger.info("Host monitoring was paused during audit cycle; discarding in-flight alerts.")
-                        db.rollback()
-                        new_alerts = []
-                    elif new_alerts:
-                        new_incidents = IncidentCorrelator.correlate_alerts(db)
+                        if not stream_manager.host_monitoring_active:
+                            logger.info("Host monitoring paused mid-audit; discarding findings and rolling back.")
+                            db_worker.rollback()
+                            return [], [], {}
 
-                        # Efficient SQL-level KPI aggregation
-                        total_alerts = db.query(func.count(Alert.id)).scalar() or 0
-                        total_incidents = db.query(func.count(Incident.id)).scalar() or 0
+                        if not alerts:
+                            return [], [], {}
 
-                        sev_counts = dict(db.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all())
-                        status_counts = dict(db.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all())
+                        incidents = IncidentCorrelator.correlate_alerts(db_worker)
+                        total_alerts = db_worker.query(func.count(Alert.id)).scalar() or 0
+                        total_incidents = db_worker.query(func.count(Incident.id)).scalar() or 0
+                        sev_counts = dict(db_worker.query(Alert.severity, func.count(Alert.id)).group_by(Alert.severity).all())
+                        status_counts = dict(db_worker.query(Alert.status, func.count(Alert.id)).group_by(Alert.status).all())
 
-                        stats = {
+                        stats_dict = {
                             "total_alerts": total_alerts,
                             "critical_count": sev_counts.get("CRITICAL", 0),
                             "high_count": sev_counts.get("HIGH", 0),
@@ -1077,56 +1077,69 @@ async def real_host_monitor_loop():
                             "resolved_count": status_counts.get("RESOLVED", 0),
                             "total_incidents": total_incidents
                         }
-
-                        # Broadcast each detected alert over WebSocket
-                        for alert in new_alerts:
-                            ts_str = alert.timestamp.strftime("%Y-%m-%d %H:%M:%S") if isinstance(alert.timestamp, datetime) else str(alert.timestamp)
-                            payload = {
-                                "type": "LIVE_THREAT",
-                                "origin": alert.telemetry_origin,
-                                "alert": {
-                                    "id": str(alert.id),
-                                    "timestamp": ts_str,
-                                    "severity": alert.severity,
-                                    "risk_score": alert.risk_score,
-                                    "event_type": alert.event_type,
-                                    "description": alert.description,
-                                    "source_type": alert.source_type,
-                                    "telemetry_origin": alert.telemetry_origin,
-                                    "source_ip": alert.source_ip,
-                                    "destination_ip": alert.destination_ip,
-                                    "mitre_technique": alert.mitre_technique,
-                                    "status": alert.status
-                                },
-                                "stats": stats,
-                                "new_incidents": [
-                                    {
-                                        "id": str(i.id),
-                                        "title": i.title,
-                                        "description": i.description,
-                                        "risk_score": i.risk_score,
-                                        "alert_count": i.alert_count,
-                                        "mitre_technique": i.mitre_technique,
-                                        "status": i.status
-                                    } for i in new_incidents
-                                ]
+                        alert_dicts = [
+                            {
+                                "id": str(a.id),
+                                "timestamp": a.timestamp.strftime("%Y-%m-%d %H:%M:%S") if isinstance(a.timestamp, datetime) else str(a.timestamp),
+                                "severity": a.severity,
+                                "risk_score": a.risk_score,
+                                "event_type": a.event_type,
+                                "description": a.description,
+                                "source_type": a.source_type,
+                                "telemetry_origin": a.telemetry_origin,
+                                "source_ip": a.source_ip,
+                                "destination_ip": a.destination_ip,
+                                "mitre_technique": a.mitre_technique,
+                                "status": a.status
                             }
-                            await stream_manager.broadcast(payload)
-                            logger.info(f"Broadcasted REAL host security alert: {alert.description}")
+                            for a in alerts
+                        ]
+                        incident_dicts = [
+                            {
+                                "id": str(i.id),
+                                "title": i.title,
+                                "description": i.description,
+                                "risk_score": i.risk_score,
+                                "alert_count": i.alert_count,
+                                "mitre_technique": i.mitre_technique,
+                                "status": i.status
+                            }
+                            for i in incidents
+                        ]
+                        return alert_dicts, incident_dicts, stats_dict
+                    except Exception as ex:
+                        db_worker.rollback()
+                        logger.error(f"Error in host audit worker thread: {ex}", exc_info=True)
+                        return [], [], {}
+                    finally:
+                        db_worker.close()
 
-                    # Periodic telemetry heartbeat every 5 ticks (~10s)
-                    elif tick % 5 == 0 and stream_manager.active_connections:
-                        host_info = host_sensor.get_host_info()
-                        host_info["monitoring_active"] = stream_manager.host_monitoring_active
-                        host_info["simulation_active"] = stream_manager.simulation_active
-                        await stream_manager.broadcast({
-                            "type": "HEARTBEAT",
-                            "origin": "HOST_TELEMETRY",
-                            "is_sensitive": True,
-                            "host_info": host_info
-                        })
-                finally:
-                    db.close()
+                is_full_audit = (not initial_full_done or (tick % 10 == 0))
+                alert_payloads, incident_payloads, stats_payload = await asyncio.to_thread(_audit_worker, is_full_audit)
+                if is_full_audit:
+                    initial_full_done = True
+
+                if alert_payloads and stream_manager.host_monitoring_active:
+                    for a_dict in alert_payloads:
+                        payload = {
+                            "type": "LIVE_THREAT",
+                            "origin": a_dict.get("telemetry_origin", "HOST_TELEMETRY"),
+                            "alert": a_dict,
+                            "stats": stats_payload,
+                            "new_incidents": incident_payloads
+                        }
+                        await stream_manager.broadcast(payload)
+                        logger.info(f"Broadcasted REAL host security alert: {a_dict.get('description')}")
+                elif tick % 5 == 0 and stream_manager.active_connections:
+                    host_info = host_sensor.get_host_info()
+                    host_info["monitoring_active"] = stream_manager.host_monitoring_active
+                    host_info["simulation_active"] = stream_manager.simulation_active
+                    await stream_manager.broadcast({
+                        "type": "HEARTBEAT",
+                        "origin": "HOST_TELEMETRY",
+                        "is_sensitive": True,
+                        "host_info": host_info
+                    })
             tick += 1
         except asyncio.CancelledError:
             logger.info("Host monitor background loop cancelled cleanly.")

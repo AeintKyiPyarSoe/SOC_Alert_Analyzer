@@ -43,3 +43,6 @@ Desktop.ini
 dist/*
 !dist/SHA256SUMS.txt
 
+
+coverage.xml
+*.db-*

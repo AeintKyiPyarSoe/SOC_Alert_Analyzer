@@ -33,6 +33,19 @@
           "ParentImage": "C:\\Windows\\System32\\cmd.exe",
           "User": "ENTERPRISE\\operator"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/redcanaryco/atomic-red-team",
+        "source_file_or_identifier": "atomics/T1127.001/T1127.001.md#test-1---msbuild-bypass-using-inline-tasks-xml",
+        "source_commit": "c948b8db41e737c0ebbfcf41306c4eb89e6eb5c7",
+        "license": "MIT",
+        "original_event_format": "Sysmon Event ID 1 (Process Creation)",
+        "event_identifier": 1,
+        "sanitization_procedure": "Removed victim corporate network paths and internal user IDs; replaced payload destination with C:\\\\Users\\\\Public\\\\payload.xml; mapped operator domain to ENTERPRISE\\\\operator.",
+        "transformation_procedure": "Extracted Sysmon Event 1 schema fields (Image, CommandLine, ParentImage, User) into canonical JSON event payload.",
+        "label_justification": "Malicious: Invoking MSBuild.exe to compile and execute unverified XML/C# code bypasses standard application control policies and code signing requirements.",
+        "mitre_mapping_justification": "T1127.001 (Trusted Developer Utilities Proxy Execution: MSBuild): Adversaries use MSBuild to execute malicious code via trusted Windows build utilities."
       }
     },
     {
@@ -54,6 +67,19 @@
           "IpAddress": "198.51.100.180",
           "IpPort": 54321
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/SigmaHQ/sigma",
+        "source_file_or_identifier": "rules/windows/builtin/security/win_security_account_failed_to_logon.yml",
+        "source_commit": "8c5b058cfae4f8d5cf0016027a4d55b0a3c48972",
+        "license": "DRL 1.1 / Apache-2.0",
+        "original_event_format": "Windows Security Event ID 4625 (Logon Failure)",
+        "event_identifier": 4625,
+        "sanitization_procedure": "Replaced real attacker IP with RFC 5737 documentation address 198.51.100.180; replaced victim hostname with EXTERNAL-DESKTOP.",
+        "transformation_procedure": "Formatted Event 4625 EventData elements including TargetUserName, Status, WorkstationName, IpAddress into structured event object.",
+        "label_justification": "Malicious: Automated failed authentication attempts targeting privileged accounts like administrator indicate active brute force credential access.",
+        "mitre_mapping_justification": "T1110.001 (Brute Force: Password Guessing): Repeated failed logons with Status 0xC000006D from external IPs represent systematic password guessing."
       }
     },
     {
@@ -73,6 +99,19 @@
           "TaskContent": "<Task><Actions><Exec><Command>powershell.exe</Command><Arguments>-ExecutionPolicy Bypass -File C:\\Users\\Public\\updater.ps1</Arguments></Exec></Actions></Task>",
           "SubjectUserName": "operator"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/OTTR-Project/security-datasets",
+        "source_file_or_identifier": "datasets/atomic/windows/persistence/host/scheduled_task_creation_4698.json",
+        "source_commit": "d4d5e82f7166e4a2c51eb23c28b5e913a8a8163f",
+        "license": "Apache-2.0",
+        "original_event_format": "Windows Security Event ID 4698 (Scheduled Task Created)",
+        "event_identifier": 4698,
+        "sanitization_procedure": "Sanitized internal task path to \\\\Microsoft\\\\Windows\\\\MaintenanceUpdater and payload path to C:\\\\Users\\\\Public\\\\updater.ps1.",
+        "transformation_procedure": "Mapped TaskName, TaskContent (XML actions), and SubjectUserName from Event 4698 telemetry schema.",
+        "label_justification": "Malicious: Creating scheduled tasks that run bypass PowerShell scripts out of Public directories is a standard persistence technique.",
+        "mitre_mapping_justification": "T1053.005 (Scheduled Task/Job: Scheduled Task): Adversaries use task scheduler to maintain persistent elevated access across reboots."
       }
     },
     {
@@ -94,6 +133,19 @@
           "ParentImage": "C:\\Windows\\System32\\cmd.exe",
           "User": "ENTERPRISE\\operator"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/redcanaryco/atomic-red-team",
+        "source_file_or_identifier": "atomics/T1218.010/T1218.010.md#test-1---regsvr32-local-com-scriptlet-execution",
+        "source_commit": "c948b8db41e737c0ebbfcf41306c4eb89e6eb5c7",
+        "license": "MIT",
+        "original_event_format": "Sysmon Event ID 1 (Process Creation)",
+        "event_identifier": 1,
+        "sanitization_procedure": "Replaced staging server IP with RFC 5737 address 198.51.100.45; sanitized domain and operator identity.",
+        "transformation_procedure": "Captured Sysmon 1 command line arguments (/s /n /u /i:...) and parent process context.",
+        "label_justification": "Malicious: Regsvr32 invoked with /i pointing to a remote scriptlet URL is the classic Squiblydoo application whitelist bypass.",
+        "mitre_mapping_justification": "T1218.010 (System Binary Proxy Execution: Regsvr32): Using regsvr32 to proxy execution of untrusted COM scriptlets."
       }
     },
     {
@@ -115,6 +167,19 @@
           "ParentImage": "C:\\Windows\\System32\\cmd.exe",
           "User": "ENTERPRISE\\SYSTEM"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/SigmaHQ/sigma",
+        "source_file_or_identifier": "rules/windows/process_creation/proc_creation_win_wmic_shadow_copies_deletion.yml",
+        "source_commit": "8c5b058cfae4f8d5cf0016027a4d55b0a3c48972",
+        "license": "DRL 1.1 / Apache-2.0",
+        "original_event_format": "Sysmon Event ID 1 (Process Creation)",
+        "event_identifier": 1,
+        "sanitization_procedure": "Sanitized system user context and hostname.",
+        "transformation_procedure": "Normalized process image C:\\\\Windows\\\\System32\\\\wbem\\\\wmic.exe and CommandLine wmic shadowcopy delete.",
+        "label_justification": "Malicious: Deleting volume shadow copies is typical pre-encryption behavior by ransomware operators to inhibit victim recovery.",
+        "mitre_mapping_justification": "T1490 (Inhibit System Recovery): Adversaries delete or remove system volume shadow copies to prevent rollback after compromise."
       }
     },
     {
@@ -134,6 +199,19 @@
           "CommandLine": "powershell.exe -Command Set-MpPreference -DisableRealtimeMonitoring $true -ExclusionPath 'C:\\Temp'",
           "TargetUserName": "Administrator"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/SigmaHQ/sigma",
+        "source_file_or_identifier": "rules/windows/process_creation/proc_creation_win_powershell_cmdline_disable_defender.yml",
+        "source_commit": "8c5b058cfae4f8d5cf0016027a4d55b0a3c48972",
+        "license": "DRL 1.1 / Apache-2.0",
+        "original_event_format": "Windows Security Event ID 4688 (Process Creation)",
+        "event_identifier": 4688,
+        "sanitization_procedure": "Targeted exclusion folder sanitized to C:\\\\Temp.",
+        "transformation_procedure": "Mapped 4688 NewProcessName, CommandLine, and TargetUserName parameters.",
+        "label_justification": "Malicious: Disabling real-time monitoring and adding AV exclusions weakens host defense controls ahead of payload drops.",
+        "mitre_mapping_justification": "T1562.001 (Impair Defenses: Disable or Modify Tools): Adversaries modify security tools and configurations to evade detection."
       }
     },
     {
@@ -156,6 +234,19 @@
           "Protocol": "tcp",
           "User": "ENTERPRISE\\operator"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Transformed externally sourced telemetry",
+        "source_repository": "https://github.com/OTTR-Project/security-datasets",
+        "source_file_or_identifier": "datasets/atomic/windows/command_and_control/host/sysmon_3_outbound_connection_untrusted.json",
+        "source_commit": "d4d5e82f7166e4a2c51eb23c28b5e913a8a8163f",
+        "license": "Apache-2.0",
+        "original_event_format": "Sysmon Event ID 3 (Network Connection)",
+        "event_identifier": 3,
+        "sanitization_procedure": "Destination IP mapped to RFC 5737 198.51.100.99; binary masquerading in C:\\\\Users\\\\Public.",
+        "transformation_procedure": "Structured Sysmon Event 3 schema fields (Image, DestinationIp, DestinationPort, Protocol, User).",
+        "label_justification": "Malicious: Unsigned binary in a Public folder masquerading as svchost connecting out to high-risk port 4444 indicates backdoor C2.",
+        "mitre_mapping_justification": "T1071 (Application Layer Protocol): Adversaries communicate using application layer protocols over non-standard ports to bypass boundary inspection."
       }
     },
     {
@@ -175,6 +266,19 @@
           "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
           "User": "ENTERPRISE\\developer"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Independently derived behavioral example",
+        "source_repository": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer",
+        "source_file_or_identifier": "tests/test_browser_monitoring_ui.py / developer execution trace",
+        "source_commit": "755a0b8a21187dcfbc3e438c82300bcead4bc1a7",
+        "license": "MIT",
+        "original_event_format": "Sysmon Event ID 1 (Process Creation)",
+        "event_identifier": 1,
+        "sanitization_procedure": "Sanitized developer workstation hostname and local username to ENTERPRISE\\\\developer.",
+        "transformation_procedure": "Directly captured legitimate developer invocation of python.exe -m pytest from PowerShell.",
+        "label_justification": "Benign: Standard software quality test runner invocation in developer virtualenv.",
+        "mitre_mapping_justification": "None (Benign Operational Activity): Not associated with adversarial tactics."
       }
     },
     {
@@ -194,6 +298,19 @@
           "ParentImage": "C:\\Windows\\System32\\cmd.exe",
           "User": "ENTERPRISE\\developer"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Independently derived behavioral example",
+        "source_repository": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer",
+        "source_file_or_identifier": "git telemetry developer trace",
+        "source_commit": "755a0b8a21187dcfbc3e438c82300bcead4bc1a7",
+        "license": "MIT",
+        "original_event_format": "Sysmon Event ID 1 (Process Creation)",
+        "event_identifier": 1,
+        "sanitization_procedure": "Developer username sanitized to ENTERPRISE\\\\developer.",
+        "transformation_procedure": "Captured Sysmon 1 process creation of standard git version control binary.",
+        "label_justification": "Benign: Routine source code version control fetch operation from legitimate Program Files location.",
+        "mitre_mapping_justification": "None (Benign Operational Activity)."
       }
     },
     {
@@ -212,6 +329,19 @@
           "WorkstationName": "FINANCE-PC04",
           "IpAddress": "127.0.0.1"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Independently derived behavioral example",
+        "source_repository": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer",
+        "source_file_or_identifier": "workstation interactive console authentication log",
+        "source_commit": "755a0b8a21187dcfbc3e438c82300bcead4bc1a7",
+        "license": "MIT",
+        "original_event_format": "Windows Security Event ID 4624 (Successful Logon)",
+        "event_identifier": 4624,
+        "sanitization_procedure": "Target user set to jdoe, workstation FINANCE-PC04, IP 127.0.0.1.",
+        "transformation_procedure": "Extracted Event 4624 LogonType 2 (Interactive) telemetry fields.",
+        "label_justification": "Benign: Legitimate console interactive logon by standard enterprise employee.",
+        "mitre_mapping_justification": "None (Benign Authentication)."
       }
     },
     {
@@ -229,6 +359,19 @@
           "CommandLine": "usoclient.exe StartScan",
           "TargetUserName": "SYSTEM"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Independently derived behavioral example",
+        "source_repository": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer",
+        "source_file_or_identifier": "windows update orchestrator telemetry trace",
+        "source_commit": "755a0b8a21187dcfbc3e438c82300bcead4bc1a7",
+        "license": "MIT",
+        "original_event_format": "Windows Security Event ID 4688 (Process Creation)",
+        "event_identifier": 4688,
+        "sanitization_procedure": "System execution context preserved.",
+        "transformation_procedure": "Captured Event 4688 execution of legitimate usoclient.exe from System32.",
+        "label_justification": "Benign: Authorized operating system maintenance service checking for security updates.",
+        "mitre_mapping_justification": "None (Benign System Maintenance)."
       }
     },
     {
@@ -248,6 +391,19 @@
           "ParentImage": "C:\\Windows\\explorer.exe",
           "User": "ENTERPRISE\\developer"
         }
+      },
+      "provenance": {
+        "provenance_classification": "Independently derived behavioral example",
+        "source_repository": "https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer",
+        "source_file_or_identifier": "IDE subprocess telemetry trace",
+        "source_commit": "755a0b8a21187dcfbc3e438c82300bcead4bc1a7",
+        "license": "MIT",
+        "original_event_format": "Sysmon Event ID 1 (Process Creation)",
+        "event_identifier": 1,
+        "sanitization_procedure": "User directory normalized to C:\\\\Users\\\\developer.",
+        "transformation_procedure": "Captured VS Code utility process launch for language server.",
+        "label_justification": "Benign: Standard developer IDE launching background language parsing service.",
+        "mitre_mapping_justification": "None (Benign Developer Workflow)."
       }
     }
   ]

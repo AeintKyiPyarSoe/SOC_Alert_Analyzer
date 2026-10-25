@@ -348,8 +348,12 @@ class MitreMapper:
         # Ingress tool transfer / LOLBINs
         if "certutil" in desc and ("-urlcache" in desc or "http" in desc or "split" in desc):
             return "T1105"
+        if "regsvr32" in desc:
+            return "T1218.010"
         if "mshta" in desc or "rundll32" in desc:
             return "T1218"
+        if "msbuild" in desc:
+            return "T1127.001"
 
         # Lateral movement: SMB / Windows Admin Shares
         if "windows_network_share" in event or ":445" in desc or "ipc$" in desc or "admin$" in desc:
@@ -359,13 +363,13 @@ class MitreMapper:
         if "sysmon_suspicious_dns" in event or ("dns" in desc and ("dynu" in desc or "c2" in desc or "beacon" in desc or "duckdns" in desc or "ngrok" in desc or "tunnel" in desc)):
             return "T1071.004"
 
-        # Brute force / Auth failure
+        # Brute force / Auth failure / Credential Access
+        if "password guessing" in desc or "password spray" in desc or "0xc000006d" in desc or "0xc000006a" in desc:
+            return "T1110.001"
         if "ssh_authentication_failure" in event or "ssh_invalid_user" in event or "windows_failed_logon" in event:
             return "T1110"
         if bool(re.search(r"\bbrute\b", desc)) or "failed login" in desc or "failed password" in desc or "failed logon" in desc:
             return "T1110"
-        if "password guessing" in desc or "password spray" in desc:
-            return "T1110.001"
 
         # SSH activity / lateral movement
         if "ssh_login_successful" in event or "ssh_activity" in event:
@@ -391,11 +395,16 @@ class MitreMapper:
         if "windows_scheduled_task" in event or "scheduled task" in desc:
             return "T1053.005"
 
-        # Defense Evasion: Log cleared & Firewall disabled & Masquerading
+        # Defense Evasion: Log cleared & Security control tampering & Recovery inhibition & Masquerading
         if "windows_log_cleared" in event or "log cleared" in desc or "audit log cleared" in desc:
             return "T1070.001"
-        if "host_firewall_disabled" in event or "firewall is disabled" in desc or "firewall disabled" in desc or "advfirewall" in desc or ("firewall" in desc and ("state off" in desc or "disable" in desc or "-enabled false" in desc)):
+        if ("host_firewall_disabled" in event or "firewall is disabled" in desc or "firewall disabled" in desc or
+            "advfirewall" in desc or ("firewall" in desc and ("state off" in desc or "disable" in desc or "-enabled false" in desc)) or
+            "set-mppreference" in desc or "disablerealtime" in desc or "exclusionpath" in desc or "tamperprotection" in desc or
+            "windefend" in desc):
             return "T1562.001"
+        if "shadowcopy delete" in desc or "delete shadows" in desc or "wbadmin delete" in desc or ("wmic" in desc and "shadowcopy" in desc):
+            return "T1490"
         if "masqueraded_process" in event or "masquerad" in desc:
             return "T1036"
 
@@ -408,13 +417,18 @@ class MitreMapper:
             return "T1046"
 
         # Command & Control / Suspicious outbound
-        if "suspicious_outbound_connection" in event or "suspicious outbound" in desc:
+        if ("sysmon_suspicious_network" in event or "suspicious_outbound_connection" in event or
+            "suspicious outbound" in desc or ":4444" in desc or ":1337" in desc):
             return "T1071"
 
+        # Strip parent process annotation so parent process info doesn't falsely categorize child binaries
+        desc_no_parent = re.sub(r"\(parent:\s*[^)]+\)", "", desc, flags=re.IGNORECASE)
+
         # Script execution / PowerShell
-        if "powershell" in desc or "powershell" in event or "script_block" in event:
+        if ("powershell" in desc_no_parent or "powershell" in event or "script_block" in event or
+            "pwsh" in desc_no_parent):
             return "T1059.001"
-        if "windows_suspicious_process" in event or "suspicious_process" in event or "suspicious_command" in event:
+        if "windows_suspicious_process" in event or "sysmon_suspicious_process" in event or "suspicious_process" in event or "suspicious_command" in event:
             return "T1059"
 
         # Web Attacks

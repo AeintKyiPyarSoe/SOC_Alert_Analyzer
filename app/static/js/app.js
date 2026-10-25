@@ -1154,13 +1154,18 @@ function updateMonitoringUI(state) {
         } else if (isHostError) {
             livePill.classList.add('error');
             livePill.title = 'Native Host Security Sensor: Background Task ERROR';
-        } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING') {
+        } else if (mState === 'STOPPED') {
+            livePill.classList.add('error');
+            livePill.title = 'Native Host Security Sensor: Background Task STOPPED';
+        } else if (mState === 'CHECKING' || mState === 'PAUSING' || mState === 'RESUMING' || mState === 'STARTING') {
             livePill.classList.add('checking');
             livePill.title = `Native Host Security Sensor: ${mState}...`;
         } else {
             livePill.classList.add('unknown');
             livePill.title = 'Native Host Security Sensor: Status unknown or backend unreachable';
         }
+        livePill.setAttribute('aria-label', livePill.title);
+        livePill.setAttribute('role', 'status');
     }
 
     pulseDots.forEach(dot => {
@@ -1185,6 +1190,8 @@ function updateMonitoringUI(state) {
             liveText.textContent = 'HOST SENSOR: PAUSED';
         } else if (isHostError) {
             liveText.textContent = 'HOST SENSOR: ERROR';
+        } else if (mState === 'STOPPED') {
+            liveText.textContent = 'HOST SENSOR: STOPPED';
         } else if (mState === 'PAUSING') {
             liveText.textContent = 'HOST SENSOR: PAUSING...';
         } else if (mState === 'RESUMING') {
@@ -1215,12 +1222,17 @@ function updateMonitoringUI(state) {
             btnHost.title = 'Sensor background task stopped with error. Click to resume.';
             btnHost.classList.add('btn-secondary');
             btnHost.disabled = false;
+        } else if (mState === 'STOPPED') {
+            btnHost.textContent = '⏹️ Host Sensor: STOPPED';
+            btnHost.title = 'Sensor background task stopped unexpectedly. Click to resume.';
+            btnHost.classList.add('btn-secondary');
+            btnHost.disabled = false;
         } else if (mState === 'PAUSING') {
             btnHost.textContent = '⏳ Host Sensor: PAUSING...';
             btnHost.title = 'Pausing host sensor...';
             btnHost.classList.add('btn-secondary');
             btnHost.disabled = true;
-        } else if (mState === 'RESUMING') {
+        } else if (mState === 'RESUMING' || mState === 'STARTING') {
             btnHost.textContent = '⏳ Host Sensor: RESUMING...';
             btnHost.title = 'Resuming host sensor...';
             btnHost.classList.add('btn-outline');
@@ -1236,6 +1248,8 @@ function updateMonitoringUI(state) {
             btnHost.classList.add('btn-secondary');
             btnHost.disabled = false;
         }
+        btnHost.setAttribute('aria-label', btnHost.textContent);
+        btnHost.setAttribute('aria-busy', (mState === 'PAUSING' || mState === 'RESUMING' || mState === 'CHECKING' || mState === 'STARTING') ? 'true' : 'false');
     }
 
     // 3. Action Toolbar Simulation Toggle Button

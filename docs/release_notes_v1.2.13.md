@@ -4,9 +4,9 @@
 **Release Date:** October 25, 2026  
 **Authoritative Binary SHA-256 (GitHub Actions Runner):** `67a7072ed8b69a9f01003128c5f265d2e730e3a178bdbe9b8e8102f4cdf63bf5`  
 **Standalone EXE Size (Runner):** 25,259,740 bytes (Windows Server 2022 / Python 3.12)  
-**Local Verified Binary SHA-256:** `6e7a6537144d5649f0a2de93ee3736282bde23934341683538b0d37c8bb0da11`  
-**Standalone EXE Size (Local):** 54,113,978 bytes (Windows 11 / Python 3.13)  
-**Test Suite Status:** 312 passed (100% passing rate, ≥85% CI floor)  
+**Separate Local Build SHA-256 (not the published release artifact):** `6e7a6537144d5649f0a2de93ee3736282bde23934341683538b0d37c8bb0da11`  
+**Separate Local Build EXE Size:** 54,113,978 bytes (Windows 11 / Python 3.13)  
+**Test Suite Status:** 312 collected, 302 passed, 10 browser tests skipped, 0 failed, 1 warning (Windows Python 3.12 coverage: 86.40%; ≥85% CI floor)  
 **Security Scans:** Bandit AST SAST (0 issues), Flake8 (0 errors), Ruff (0 issues), Pip-Audit (0 vulnerabilities)  
 **Supply Chain Security:** CycloneDX v1.5 `sbom.json`, SPDX v2.3 `sbom.spdx.json`, fully pinned `requirements.lock`  
 
@@ -44,6 +44,7 @@
 * **Differentiated User Prompts**: Differentiated the `Clear History` confirmation modal text to inform analysts whether the background sensor is active (prompting a new scan) or paused (maintaining quiet state).
 
 ### 🎭 Real Browser UI Automation Suite (Playwright)
+* **CI limitation:** The 10 browser tests were skipped in v1.2.13 CI because Playwright/Chromium were not installed; this is not browser-level test evidence.
 * **Headless Chromium Automation**: Introduced `tests/test_browser_monitoring_ui.py` running real headless browser tests across 10 end-to-end scenarios:
   - Initial load state verification
   - Clean pause/resume button lifecycle transitions

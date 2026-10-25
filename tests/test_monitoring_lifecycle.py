@@ -285,3 +285,128 @@ def test_task_unexpected_crash_reporting():
         stream_manager.host_monitoring_active = True
 
     asyncio.run(run_crash_test())
+
+
+def test_task_unexpected_clean_exit_reporting():
+    """Verify stream_manager reports STOPPED when background task exits unexpectedly without exception."""
+    from app.security.stream import stream_manager
+
+    async def run_clean_exit_test():
+        async def clean_exit_coro():
+            return "finished unexpectedly"
+
+        task = asyncio.create_task(clean_exit_coro())
+        await task
+
+        stream_manager._monitor_task = task
+        stream_manager.host_monitoring_active = True
+
+        status = stream_manager.get_status()
+        assert status["monitoring_state"] == "STOPPED"
+        assert status["task_status"] == "STOPPED"
+        assert status["task_error"] is None
+        assert status["host_monitoring_active"] is False  # Must not falsely claim active when stopped!
+
+        # Clean up
+        stream_manager._monitor_task = None
+        stream_manager.host_monitoring_active = True
+
+    asyncio.run(run_clean_exit_test())
+
+
+def test_missing_task_reference_reporting():
+    """Verify stream_manager reports STOPPED when host_monitoring_active is True but task is None."""
+    from app.security.stream import stream_manager
+
+    stream_manager._monitor_task = None
+    stream_manager.host_monitoring_active = True
+
+    status = stream_manager.get_status()
+    assert status["monitoring_state"] == "STOPPED"
+    assert status["task_status"] == "STOPPED"
+    assert status["host_monitoring_active"] is False
+
+
+def test_repeated_start_and_stop_idempotency():
+    """Verify repeated starts and repeated stops are strictly idempotent."""
+    async def run_idempotency():
+        mgr = ThreatStreamManager()
+
+        # Repeated start: only 1 task spawned
+        await mgr.start_host_monitoring(persist=False)
+        task1 = mgr._monitor_task
+        assert task1 is not None and not task1.done()
+
+        await mgr.start_host_monitoring(persist=False)
+        task2 = mgr._monitor_task
+        assert task1 is task2, "Repeated start must not replace running task!"
+
+        # Repeated stop
+        await mgr.stop_host_monitoring(persist=False)
+        assert mgr._monitor_task is None
+        assert mgr.host_monitoring_active is False
+
+        # Second stop: no-op
+        await mgr.stop_host_monitoring(persist=False)
+        assert mgr._monitor_task is None
+        assert mgr.host_monitoring_active is False
+
+    asyncio.run(run_idempotency())
+
+
+def test_simultaneous_toggle_serialization():
+    """Verify concurrent toggles are serialized under lifecycle lock without race conditions."""
+    async def run_concurrent_toggles():
+        mgr = ThreatStreamManager()
+
+        # Fire 5 concurrent start calls
+        results = await asyncio.gather(
+            mgr.start_host_monitoring(persist=False),
+            mgr.start_host_monitoring(persist=False),
+            mgr.start_host_monitoring(persist=False),
+            mgr.start_host_monitoring(persist=False),
+            mgr.start_host_monitoring(persist=False)
+        )
+        assert all(results)
+        assert mgr.host_monitoring_active is True
+        assert mgr._monitor_task is not None and not mgr._monitor_task.done()
+
+        # Fire 5 concurrent stop calls
+        stop_results = await asyncio.gather(
+            mgr.stop_host_monitoring(persist=False),
+            mgr.stop_host_monitoring(persist=False),
+            mgr.stop_host_monitoring(persist=False),
+            mgr.stop_host_monitoring(persist=False),
+            mgr.stop_host_monitoring(persist=False)
+        )
+        assert not any(stop_results)
+        assert mgr.host_monitoring_active is False
+        assert mgr._monitor_task is None
+
+    asyncio.run(run_concurrent_toggles())
+
+
+def test_pause_during_audit_transaction_rollback(db_session, monkeypatch):
+    """Verify that when pause occurs mid-audit, DB transaction is rolled back and in-flight alerts discarded."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.models.alert import Alert
+
+    stream_manager.host_monitoring_active = True
+
+    # Inject a step in audit_network_sockets that triggers a pause
+    orig_audit_sockets = host_sensor.audit_network_sockets
+
+    def pause_mid_audit():
+        stream_manager.host_monitoring_active = False
+        return orig_audit_sockets()
+
+    monkeypatch.setattr(host_sensor, "audit_network_sockets", pause_mid_audit)
+
+    alerts = host_sensor.run_full_audit(db_session, check_active=True)
+    assert alerts == [], "In-flight alerts must be discarded when paused mid-audit!"
+    # Verify no uncommitted alerts leaked into database
+    assert db_session.query(Alert).count() == 0
+
+    # Reset
+    stream_manager.host_monitoring_active = True
