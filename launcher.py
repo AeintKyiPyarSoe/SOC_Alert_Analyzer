@@ -23,6 +23,10 @@ sys.path.insert(0, str(BASE_DIR))
 import uvicorn
 from app.config import settings
 from app.main import app
+from app.security.logging_filter import setup_security_logging, get_secure_uvicorn_log_config
+
+# Initialize hardened log redaction for desktop launcher
+setup_security_logging()
 
 def is_port_available(host: str, port: int) -> bool:
     """Checks whether a TCP port is open and available for binding."""
@@ -189,12 +193,14 @@ def main():
         browser_thread.start()
 
     try:
+        secure_log_config = get_secure_uvicorn_log_config(args.log_level)
         if args.reload:
             uvicorn.run(
                 "app.main:app",
                 host=host,
                 port=port,
                 log_level=args.log_level,
+                log_config=secure_log_config,
                 reload=True
             )
         else:
@@ -203,6 +209,7 @@ def main():
                 host=host,
                 port=port,
                 log_level=args.log_level,
+                log_config=secure_log_config,
                 workers=args.workers
             )
     except KeyboardInterrupt:

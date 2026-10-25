@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SOC Alert Analyzer{% endblock %} — Nicole’s Security Lab</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="{{ versioned_static('css/styles.css') }}">
 </head>
 <body>
     <!-- 11. Accessibility: Skip to Content Link -->
@@ -268,7 +268,7 @@
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
     <!-- Client Controller Script -->
-    <script src="/static/js/app.js"></script>
+    <script src="{{ versioned_static('js/app.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

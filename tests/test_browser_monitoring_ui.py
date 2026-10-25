@@ -220,7 +220,18 @@ def test_scenario_5_stale_response_race_prevention(auth_page):
     page.goto(base_url)
     page.wait_for_selector("#live-sensor-pill.active", timeout=5000)
 
-    # Click to pause
+    # Intercept next /stream/status poll and hold it
+    held_status_routes = []
+    def hold_status(route):
+        held_status_routes.append(route)
+
+    page.route("**/api/v1/stream/status", hold_status)
+
+    res = page.evaluate("(() => { try { initStreamStatus(); return 'ok'; } catch(e) { return e.toString(); } })()")
+    page.wait_for_timeout(500)
+    assert len(held_status_routes) > 0, f"Expected a status check route to be held (res={res})"
+
+    # Now click the button to pause monitoring
     btn = page.locator("#btn-toggle-host-monitor")
     with page.expect_response(lambda r: "/api/v1/host/monitor/toggle" in r.url and r.status == 200):
         btn.click()
@@ -228,17 +239,20 @@ def test_scenario_5_stale_response_race_prevention(auth_page):
     page.wait_for_selector("#live-sensor-pill.paused", timeout=5000)
     assert page.locator("#live-sensor-text").text_content().strip() == "HOST SENSOR: PAUSED"
 
-    # Simulate an older stale response arriving late via JS
-    page.evaluate("""
-        // Attempt to deliver an older response with a stale request ID
-        const staleId = currentMonitoringRequestId - 1;
-        if (staleId === currentMonitoringRequestId) {
-            updateMonitoringUI('ACTIVE');
-        }
-    """)
+    # Fulfill the older held status route with a stale ACTIVE payload
+    stale_route = held_status_routes.pop(0)
+    stale_route.fulfill(
+        status=200,
+        content_type="application/json",
+        body='{"host_monitoring_active": true, "monitoring_state": "ACTIVE"}'
+    )
 
-    # Assert PAUSED remains authoritative
+    # Allow time for potential UI handling; the stale response must be ignored
+    time.sleep(0.5)
+    page.wait_for_selector("#live-sensor-pill.paused", timeout=5000)
     assert page.locator("#live-sensor-text").text_content().strip() == "HOST SENSOR: PAUSED"
+
+    page.unroute("**/api/v1/stream/status")
 
 
 def test_scenario_6_websocket_decoupled_while_paused(auth_page):
@@ -329,11 +343,17 @@ def test_scenario_9_clear_history_confirmation_text(auth_page):
 
     page.goto(base_url)
     page.wait_for_selector("#btn-clear-alerts")
+    btn_toggle = page.locator("#btn-toggle-host-monitor")
 
-    # 1. While PAUSED:
-    page.evaluate("updateMonitoringUI('PAUSED');")
+    # 1. Transition to PAUSED via genuine user click if active
+    live_text = page.locator("#live-sensor-text")
+    if "ACTIVE" in live_text.text_content():
+        with page.expect_response(lambda r: "/api/v1/host/monitor/toggle" in r.url and r.status == 200):
+            btn_toggle.click()
+        page.wait_for_selector("#live-sensor-pill.paused", timeout=5000)
+
+    # Click Clear History while PAUSED and verify confirmation dialog message
     captured_dialogs = []
-
     def on_dialog_paused(dialog):
         captured_dialogs.append(dialog.message)
         dialog.dismiss()
@@ -344,10 +364,13 @@ def test_scenario_9_clear_history_confirmation_text(auth_page):
     assert len(captured_dialogs) == 1
     assert "Host monitoring is paused, so no automatic rescan will run" in captured_dialogs[0]
 
-    # 2. While ACTIVE:
-    page.evaluate("updateMonitoringUI('ACTIVE');")
-    captured_active = []
+    # 2. Transition back to ACTIVE via genuine user click
+    with page.expect_response(lambda r: "/api/v1/host/monitor/toggle" in r.url and r.status == 200):
+        btn_toggle.click()
+    page.wait_for_selector("#live-sensor-pill.active", timeout=5000)
 
+    # Click Clear History while ACTIVE and verify confirmation dialog message
+    captured_active = []
     def on_dialog_active(dialog):
         captured_active.append(dialog.message)
         dialog.dismiss()
@@ -360,11 +383,12 @@ def test_scenario_9_clear_history_confirmation_text(auth_page):
 
 
 def test_scenario_10_accessibility_and_button_locks(auth_page):
-    """Scenario 10: Toggle button has ARIA attributes and is locked during transitions."""
+    """Scenario 10: Toggle button has ARIA attributes and is locked during in-flight transitions."""
     page, base_url = auth_page
 
     stream_manager.start_host_monitoring_sync(persist=False)
     page.goto(base_url)
+    page.wait_for_selector("#live-sensor-pill.active", timeout=5000)
     page.wait_for_selector("#btn-toggle-host-monitor")
 
     btn = page.locator("#btn-toggle-host-monitor")
@@ -378,19 +402,35 @@ def test_scenario_10_accessibility_and_button_locks(auth_page):
     active_id = page.evaluate("document.activeElement.id")
     assert active_id == "btn-toggle-host-monitor"
 
-    # 3. Simulate PAUSING transition state: button must lock and be disabled
-    page.evaluate("updateMonitoringUI('PAUSING');")
-    assert btn.is_disabled()
-    assert "PAUSING" in btn.text_content()
-    assert btn.get_attribute("aria-busy") == "true"
+    # 3. Intercept toggle route and hold response to verify in-flight button lock and ARIA busy state
+    held_toggle = []
+    def hold_toggle(route):
+        held_toggle.append(route)
 
-    # 4. Simulate RESUMING transition state: button must lock and be disabled
-    page.evaluate("updateMonitoringUI('RESUMING');")
-    assert btn.is_disabled()
-    assert "RESUMING" in btn.text_content()
-    assert btn.get_attribute("aria-busy") == "true"
+    page.route("**/api/v1/host/monitor/toggle*", hold_toggle)
 
-    # 5. Return to ACTIVE: button enabled and aria-busy false
-    page.evaluate("updateMonitoringUI('ACTIVE');")
+    # Trigger genuine keyboard activation (Enter key on focused button)
+    btn.press("Enter")
+    page.wait_for_timeout(300)
+    assert len(held_toggle) > 0, "Expected toggle route to be intercepted"
+
+    # Verify button is locked and ARIA busy while transition is in-flight
+    assert btn.is_disabled()
+    assert btn.get_attribute("aria-busy") == "true"
+    btn_text = btn.text_content()
+    assert "PAUSING" in btn_text or "RESUMING" in btn_text
+
+    # Now fulfill the held route
+    held_route = held_toggle.pop(0)
+    held_route.fulfill(
+        status=200,
+        content_type="application/json",
+        body='{"status": "success", "host_monitoring_active": false, "monitoring_state": "PAUSED", "persisted": true}'
+    )
+
+    # Verify button unlocks and returns aria-busy to false
+    page.wait_for_selector("#live-sensor-pill.paused", timeout=5000)
     assert not btn.is_disabled()
     assert btn.get_attribute("aria-busy") == "false"
+
+    page.unroute("**/api/v1/host/monitor/toggle*")

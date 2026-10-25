@@ -379,6 +379,26 @@ async def upload_log_file(
         # Commit entire atomic transaction (alerts + incidents)
         db.commit()
 
+        # Broadcast structured summary notification over WebSocket to connected analysts
+        try:
+            total_alerts = db.query(func.count(Alert.id)).scalar() or 0
+            total_incidents = db.query(func.count(Incident.id)).scalar() or 0
+            import_summary = {
+                "type": "IMPORT_SUMMARY",
+                "origin": "HISTORICAL_LOG",
+                "filename": safe_filename,
+                "source_type": detected_source,
+                "alerts_ingested": total_ingested,
+                "incidents_created": len(incidents),
+                "stats": {
+                    "total_alerts": total_alerts,
+                    "total_incidents": total_incidents,
+                }
+            }
+            await stream_manager.broadcast(import_summary)
+        except Exception as ws_err:
+            logger.debug(f"Failed to broadcast import summary over WebSocket: {ws_err}")
+
     except HTTPException:
         db.rollback()
         raise

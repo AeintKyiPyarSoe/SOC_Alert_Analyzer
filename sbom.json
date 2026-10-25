@@ -16,7 +16,7 @@
     "component": {
       "type": "application",
       "name": "SOC_Alert_Analyzer",
-      "version": "1.2.14",
+      "version": "1.2.15",
       "description": "Defensive blue-team SOC alert triage and host security audit workbench",
       "licenses": [
         {
@@ -25,7 +25,7 @@
           }
         }
       ],
-      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.14"
+      "purl": "pkg:github/AeintKyiPyarSoe/SOC_Alert_Analyzer@1.2.15"
     }
   },
   "components": [

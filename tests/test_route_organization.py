@@ -71,4 +71,4 @@ def test_canonical_version_consistency():
 
     assert settings.VERSION == app.__version__
     assert fastapi_app.version == app.__version__
-    assert app.__version__ == "1.2.14"
+    assert app.__version__ == "1.2.15"

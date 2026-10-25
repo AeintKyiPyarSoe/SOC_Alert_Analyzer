@@ -33,6 +33,10 @@ from app.security.stream import stream_manager
 from app.security.host_sensor import host_sensor, real_host_monitor_loop
 from app.security.simulator import live_threat_simulator_loop
 from app.security.auth import require_role, Role, User, authenticate_websocket, get_current_user
+from app.security.logging_filter import setup_security_logging
+
+# Initialize hardened log redaction at module load time
+setup_security_logging()
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     BASE_DIR = Path(sys._MEIPASS) / "app"
@@ -55,6 +59,8 @@ def initial_host_baseline():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure security logging filters are attached to running server loggers
+    setup_security_logging()
     # Startup: initialize database tables & audit local host baseline
     stream_manager.set_event_loop(asyncio.get_running_loop())
     init_db()
@@ -91,6 +97,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_asset_hash_cache: dict = {}
+
+def get_asset_fingerprint(asset_rel_path: str) -> str:
+    """
+    Computes a content hash fingerprint for a static asset relative to BASE_DIR / 'static'.
+    Caches the fingerprint based on file mtime for high performance.
+    """
+    clean = asset_rel_path.lstrip("/").replace("static/", "", 1) if asset_rel_path.startswith("static/") or asset_rel_path.startswith("/static/") else asset_rel_path.lstrip("/")
+    target = BASE_DIR / "static" / clean
+    if not target.exists() or not target.is_file():
+        return settings.VERSION
+
+    try:
+        mtime = target.stat().st_mtime
+        if clean in _asset_hash_cache:
+            cached_mtime, cached_hash = _asset_hash_cache[clean]
+            if cached_mtime == mtime:
+                return cached_hash
+
+        import hashlib
+        h = hashlib.sha256()
+        with open(target, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        digest = h.hexdigest()[:12]
+        _asset_hash_cache[clean] = (mtime, digest)
+        return digest
+    except Exception:
+        return settings.VERSION
+
+def versioned_static(asset_rel_path: str) -> str:
+    """
+    Generates fingerprinted URL for static assets (e.g. /static/css/styles.css?v=abcdef123456).
+    Guarantees browser cache invalidation upon asset updates while preserving normal HTTP 304 behavior.
+    """
+    clean = asset_rel_path.lstrip("/").replace("static/", "", 1) if asset_rel_path.startswith("static/") or asset_rel_path.startswith("/static/") else asset_rel_path.lstrip("/")
+    fp = get_asset_fingerprint(clean)
+    return f"/static/{clean}?v={fp}"
+
 # Defensive Security Headers Middleware
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
@@ -109,12 +154,27 @@ async def security_headers_middleware(request: Request, call_next):
         "object-src 'none'; "
         "frame-ancestors 'none';"
     )
+
+    path = request.url.path
+    if path.startswith("/static/"):
+        # For fingerprinted static assets: allow caching with revalidation
+        response.headers.setdefault("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600")
+    elif path.startswith("/api/v1/"):
+        # Sensitive API telemetry: never store in shared caches
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Pragma"] = "no-cache"
+    elif path in ("/", "/alerts", "/incidents", "/reports/mitre", "/upload"):
+        # HTML document views: must revalidate so users automatically receive updated asset versions
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+
     return response
 
 # Static files & Jinja2 Templates
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.globals["get_stream_status"] = lambda: stream_manager.get_status()
+templates.env.globals["versioned_static"] = versioned_static
 
 # Mount API routes
 app.include_router(api_router, prefix=settings.API_V1_STR, tags=["Security Telemetry API"])

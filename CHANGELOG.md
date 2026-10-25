@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.15] - 2026-10-25
+
+### Fixed & Enhanced
+- **Security Access Log Redaction & Credential Sanitization**:
+  - Centralized log sanitization filter (`app/security/logging_filter.py`) redacts sensitive authentication parameters from Uvicorn access and application logs:
+    - Ephemeral WebSocket connection tickets (`?ticket=wst_...`) redacted to `?ticket=[REDACTED]`.
+    - HTTP Authorization headers and Bearer tokens redacted to `Bearer [REDACTED]`.
+    - API keys, session tokens, passwords, and secrets sanitized across all query string formats.
+    - Session cookies (`soc_session=...`) sanitized to `soc_session=[REDACTED]`.
+  - Preserves diagnostic operational context including client IP, endpoint path, HTTP method, status code, and response latency.
+  - Hardened log configuration integration across Uvicorn runners, desktop launcher (`launcher.py`), and FastAPI application lifespans.
+- **Monitoring Concurrency Hardening & Sensor Quiescence**:
+  - Bound lifecycle mutex (`_get_owner_lock`) to the owner application loop, eliminating deadlocks during rapid concurrent start/pause cycles across asynchronous contexts and secondary threads.
+  - Implemented generation-tracked scan cancellation tokens (`scan_generation`, `_cancel_event`) in `HostSecuritySensor`.
+  - Mid-audit sensor cancellations cleanly roll back SQLite transactions with zero uncommitted or orphaned alerts persisted.
+  - Added `wait_quiescence` to guarantee that background audit threads have exited cleanly before state transitions complete.
+- **Static Asset Content Hash Fingerprinting & HTTP Cache Invalidation**:
+  - Implemented deterministic content hash fingerprinting (`get_asset_fingerprint`, `versioned_static`) for static stylesheets and scripts (`styles.css`, `app.js`).
+  - Added template integration in `base.html` appending `?v=<hash>` to force instantaneous browser cache busting upon asset changes.
+  - Applied HTTP cache headers via middleware: `Cache-Control: no-cache, must-revalidate` on HTML document views and `Cache-Control: no-store, private` on sensitive API endpoints.
+  - Verified static asset conditional requests (`ETag` / `If-None-Match`, `Last-Modified` / `If-Modified-Since`) returning HTTP 304 Not Modified.
+- **WebSocket Import Summary Notifications**:
+  - Broadcast structured `IMPORT_SUMMARY` payloads over WebSocket upon historical log file ingestion (`/api/v1/upload`), providing connected analysts immediate real-time visibility into imported log counts, created incidents, and overall system metrics.
+- **Playwright Browser Automation Test Hardening**:
+  - Updated asynchronous Playwright execution in `tests/test_browser_monitoring_ui.py` with `page.wait_for_timeout` to ensure dependable event-loop dispatching in sync mode.
+  - Verified genuine user keyboard events (`btn.press("Enter")`) and network route interceptions to ensure in-flight button locking and ARIA busy attributes.
+- **Reproducible Dependencies & Software Bill of Materials**:
+  - Regenerated CycloneDX v1.5 `sbom.json` and SPDX v2.3 `sbom.spdx.json` matching version `1.2.15`.
+
+---
+
 ## [1.2.14] - 2026-10-25
 
 ### Fixed & Enhanced

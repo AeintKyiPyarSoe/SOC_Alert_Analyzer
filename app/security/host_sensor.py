@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import threading
 import socket
 import logging
 import platform
@@ -96,6 +97,47 @@ class HostSecuritySensor:
             self.known_pids = set()
         self.known_startup_files: Set[str] = self._get_startup_files()
         self.scan_in_progress: bool = False
+        self.scan_generation: int = 0
+        self._cancel_event = threading.Event()
+
+    def request_cancellation(self) -> int:
+        """Signals active and pending audits to cancel immediately and increments scan generation."""
+        self._cancel_event.set()
+        self.scan_generation += 1
+        return self.scan_generation
+
+    def reset_cancellation(self) -> None:
+        """Clears the cancellation signal for subsequent audit cycles."""
+        self._cancel_event.clear()
+
+    def is_scan_cancelled(self, generation: Optional[int] = None) -> bool:
+        """
+        Check if cancellation was requested globally, by generation mismatch, or via stream manager.
+        """
+        if self._cancel_event.is_set():
+            return True
+        if generation is not None and generation != self.scan_generation:
+            return True
+        try:
+            from app.security.stream import stream_manager
+            if not stream_manager.host_monitoring_active:
+                return True
+        except Exception:
+            pass
+        return False
+
+    async def wait_quiescence(self, timeout: float = 5.0) -> bool:
+        """
+        Asynchronously awaits completion of any running scan or worker thread.
+        Returns True if quiescent within timeout, False if timed out.
+        """
+        import asyncio
+        start_t = time.time()
+        while self.scan_in_progress:
+            if time.time() - start_t > timeout:
+                return False
+            await asyncio.sleep(0.05)
+        return True
 
     def _is_signature_seen_recent(self, sig: str, max_age_seconds: Optional[int] = None) -> bool:
         """
@@ -810,10 +852,18 @@ class HostSecuritySensor:
 
         return events
 
-    def _ingest_events(self, raw_events: List[Dict[str, Any]], db: Session, check_active: bool = False) -> List[Alert]:
+    def _ingest_events(self, raw_events: List[Dict[str, Any]], db: Session, check_active: bool = False, generation: Optional[int] = None) -> List[Alert]:
         """Deduplicates, normalizes, persists security alerts, and triggers correlation."""
+        current_gen = generation if generation is not None else self.scan_generation
+        if check_active and self.is_scan_cancelled(current_gen):
+            db.rollback()
+            return []
+
         created_alerts = []
         for raw in raw_events:
+            if check_active and self.is_scan_cancelled(current_gen):
+                db.rollback()
+                return []
             normalized = AlertNormalizer.normalize(raw)
             ev_ts = normalized["timestamp"]
             if ev_ts.tzinfo is None:
@@ -888,12 +938,10 @@ class HostSecuritySensor:
             db.flush()
             created_alerts.append(alert)
 
-        if check_active:
-            from app.security.stream import stream_manager
-            if not stream_manager.host_monitoring_active:
-                logger.info("Host monitoring was paused during audit; discarding in-flight findings and rolling back.")
-                db.rollback()
-                return []
+        if check_active and self.is_scan_cancelled(current_gen):
+            logger.info("Host monitoring was paused or cancelled during audit; discarding in-flight findings and rolling back.")
+            db.rollback()
+            return []
 
         if created_alerts:
             db.commit()
@@ -903,49 +951,63 @@ class HostSecuritySensor:
 
         return created_alerts
 
-    def run_fast_audit(self, db: Session, check_active: bool = False) -> List[Alert]:
+    def run_fast_audit(self, db: Session, check_active: bool = False, generation: Optional[int] = None) -> List[Alert]:
         """Runs fast, sub-second differential checks on new processes, active sockets, and startup folder."""
+        current_gen = generation if generation is not None else self.scan_generation
+        if check_active and self.is_scan_cancelled(current_gen):
+            db.rollback()
+            return []
+
         self.scan_in_progress = True
         try:
-            from app.security.stream import stream_manager
             raw_events = []
             raw_events.extend(self.audit_new_processes())
-            if check_active and not stream_manager.host_monitoring_active:
+            if check_active and self.is_scan_cancelled(current_gen):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_network_sockets())
-            if check_active and not stream_manager.host_monitoring_active:
+            if check_active and self.is_scan_cancelled(current_gen):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_startup_folder())
-            return self._ingest_events(raw_events, db, check_active=check_active)
+            if check_active and self.is_scan_cancelled(current_gen):
+                db.rollback()
+                return []
+            return self._ingest_events(raw_events, db, check_active=check_active, generation=current_gen)
         finally:
             self.scan_in_progress = False
 
-    def run_full_audit(self, db: Session, check_active: bool = False) -> List[Alert]:
+    def run_full_audit(self, db: Session, check_active: bool = False, generation: Optional[int] = None) -> List[Alert]:
         """Runs all live host security audits, normalizes findings, commits to DB, and correlates."""
+        current_gen = generation if generation is not None else self.scan_generation
+        if check_active and self.is_scan_cancelled(current_gen):
+            db.rollback()
+            return []
+
         self.scan_in_progress = True
         try:
-            from app.security.stream import stream_manager
             raw_events = []
             raw_events.extend(self.audit_processes())
-            if check_active and not stream_manager.host_monitoring_active:
+            if check_active and self.is_scan_cancelled(current_gen):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_network_sockets())
-            if check_active and not stream_manager.host_monitoring_active:
+            if check_active and self.is_scan_cancelled(current_gen):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_startup_folder())
-            if check_active and not stream_manager.host_monitoring_active:
+            if check_active and self.is_scan_cancelled(current_gen):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_firewall_posture())
-            if check_active and not stream_manager.host_monitoring_active:
+            if check_active and self.is_scan_cancelled(current_gen):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_event_logs())
-            return self._ingest_events(raw_events, db, check_active=check_active)
+            if check_active and self.is_scan_cancelled(current_gen):
+                db.rollback()
+                return []
+            return self._ingest_events(raw_events, db, check_active=check_active, generation=current_gen)
         finally:
             self.scan_in_progress = False
 
@@ -1044,15 +1106,17 @@ async def real_host_monitor_loop():
     while True:
         try:
             if stream_manager.host_monitoring_active:
-                def _audit_worker(full: bool):
+                gen = host_sensor.scan_generation
+
+                def _audit_worker(full: bool, current_gen: int):
                     db_worker = SessionLocal()
                     try:
                         if full:
-                            alerts = host_sensor.run_full_audit(db_worker, check_active=True)
+                            alerts = host_sensor.run_full_audit(db_worker, check_active=True, generation=current_gen)
                         else:
-                            alerts = host_sensor.run_fast_audit(db_worker, check_active=True)
+                            alerts = host_sensor.run_fast_audit(db_worker, check_active=True, generation=current_gen)
 
-                        if not stream_manager.host_monitoring_active:
+                        if host_sensor.is_scan_cancelled(current_gen):
                             logger.info("Host monitoring paused mid-audit; discarding findings and rolling back.")
                             db_worker.rollback()
                             return [], [], {}
@@ -1115,11 +1179,11 @@ async def real_host_monitor_loop():
                         db_worker.close()
 
                 is_full_audit = (not initial_full_done or (tick % 10 == 0))
-                alert_payloads, incident_payloads, stats_payload = await asyncio.to_thread(_audit_worker, is_full_audit)
+                alert_payloads, incident_payloads, stats_payload = await asyncio.to_thread(_audit_worker, is_full_audit, gen)
                 if is_full_audit:
                     initial_full_done = True
 
-                if alert_payloads and stream_manager.host_monitoring_active:
+                if alert_payloads and stream_manager.host_monitoring_active and not host_sensor.is_scan_cancelled(gen):
                     for a_dict in alert_payloads:
                         payload = {
                             "type": "LIVE_THREAT",
