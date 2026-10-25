@@ -724,16 +724,30 @@ def trigger_host_security_audit(
     }
 
 @router.post("/host/drill")
-def trigger_host_test_drill(
+async def trigger_host_test_drill(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(Role.ANALYST))
 ):
     """
     Generate an intentional, labeled [TEST DRILL] alert to evaluate triage playbooks.
-    Requires ANALYST or ADMIN role.
+    Requires ANALYST or ADMIN role. Broadcasts real drill alerts to connected authorized analysts.
     """
     from app.security.host_sensor import host_sensor
-    return host_sensor.run_test_drill(db)
+    res = host_sensor.run_test_drill(db)
+    if res.get("status") == "success" and "alert" in res:
+        total_alerts = db.query(func.count(Alert.id)).scalar() or 0
+        total_incidents = db.query(func.count(Incident.id)).scalar() or 0
+        payload = {
+            "type": "LIVE_THREAT",
+            "origin": res["alert"].get("telemetry_origin", "SECURITY_DRILL"),
+            "alert": res["alert"],
+            "stats": {
+                "total_alerts": total_alerts,
+                "total_incidents": total_incidents
+            }
+        }
+        await stream_manager.broadcast(payload)
+    return res
 
 @router.post("/alerts/clear")
 def clear_all_alerts(

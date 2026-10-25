@@ -174,10 +174,20 @@ class WindowsEventParser(BaseParser):
                 "-enc", "-encodedcommand", "powershell", "certutil", "mshta", "vssadmin",
                 "mimikatz", "netsh advfirewall", "downloadstring", "downloadfile",
                 "invoke-expression", "-w hidden", "-windowstyle hidden", "wscript",
-                "cscript", "rundll32", "regsvr32", "bitsadmin", "sekurlsa"
+                "cscript", "rundll32", "regsvr32", "bitsadmin", "sekurlsa",
+                "msbuild", "wmic", "shadowcopy", "set-mppreference"
             )
             if any(t in cmd_check for t in suspicious_tokens):
                 event_type = "windows_suspicious_process" if event_id == 4688 else "sysmon_suspicious_process"
+        elif event_id == 3:
+            img_lower = str(image or "").lower()
+            dst_port_num = int(dst_port) if dst_port and str(dst_port).isdigit() else None
+            untrusted_paths = ("\\users\\public\\", "\\appdata\\local\\temp\\", "\\programdata\\")
+            is_untrusted_loc = any(p in img_lower for p in untrusted_paths)
+            is_masquerade = ("svchost" in img_lower and "system32" not in img_lower)
+            high_risk_ports = (4444, 1337, 5985, 6667)
+            if (dst_port_num in high_risk_ports) or (is_untrusted_loc and dst_port_num not in (80, 443)) or is_masquerade:
+                event_type = "sysmon_suspicious_network"
         elif event_id == 22:
             q_lower = str(query_name or "").lower()
             suspicious_dns_indicators = (

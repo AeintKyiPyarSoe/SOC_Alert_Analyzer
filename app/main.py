@@ -56,6 +56,7 @@ def initial_host_baseline():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize database tables & audit local host baseline
+    stream_manager.set_event_loop(asyncio.get_running_loop())
     init_db()
     # Authoritative configuration initialization for monitoring and simulation respecting persisted preferences
     if stream_manager.host_monitoring_active:

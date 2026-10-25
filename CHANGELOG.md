@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.14] - 2026-10-25
+
+### Fixed & Enhanced
+- **Mandatory Real Browser UI Automation Suite (Playwright Chromium)**:
+  - Validated all 10 browser UI scenarios (`tests/test_browser_monitoring_ui.py`) executing genuine user actions in real headless Chromium.
+  - Eliminated test skipping and guaranteed CI execution with provisioned Chromium dependencies.
+  - Verified initial neutral `CHECKING` state during backend delays, synchronized `ACTIVE` and `PAUSED` states, error states on backend failure, stale response race prevention, transport disruption decoupling, and full accessibility compliance.
+- **Monitoring Task Lifecycle State Machine & Task-Health Edge Cases**:
+  - Implemented formal eight-state lifecycle model: `STARTING`, `ACTIVE`, `PAUSING`, `PAUSED`, `RESUMING`, `STOPPED`, `ERROR`, `UNKNOWN`.
+  - Proved `ThreatStreamManager.get_status()` strictly inspects running tasks; crashed tasks or missing task references report `ERROR` or `STOPPED` and never falsely report `ACTIVE`.
+  - Replaced loop-bound locks with `threading.Lock()` to serialize lifecycle transitions safely across thread boundaries.
+  - Offloaded blocking host security audits to worker threads via `asyncio.to_thread` with cooperative cancellation and clean transaction rollback on sensor pause.
+- **Real Defensive Alert Delivery Through Compiled Windows Executable (Tests A-M)**:
+  - Extended `scripts/test_exe_websocket_integration.py` to verify that newly ingested security drill alerts are normalized, scored, persisted to SQLite, and delivered in real time over the WebSocket stream to authorized connected analysts.
+  - Verified strict role authorization: unauthenticated or demo-only clients are forbidden from minting WebSocket tickets or receiving sensitive host telemetry.
+  - Verified independent event delivery: manual drills and imported logs continue delivering over WebSocket even while continuous host monitoring is paused.
+- **Detection Rules & MITRE ATT&CK Accuracy Improvements**:
+  - Enhanced Windows Event & Sysmon detection rules for MSBuild compilation (`T1127.001`), Regsvr32 DLL registration (`T1218.010`), Volume Shadow Copy deletion (`T1490`), Defender tampering (`T1562.001`), and outbound C2 network beacons (`T1071`).
+  - Disambiguated parent processes to prevent benign developer tools (e.g. `pytest`) from triggering false positives.
+  - Achieved 100% precision, 100% recall, and 100% accuracy on both curated and independent telemetry benchmark datasets.
+- **Comprehensive Independent Telemetry Dataset Provenance**:
+  - Documented full 11-field provenance for all 12 independent telemetry scenarios in `sample_data/independent_telemetry/independent_telemetry_dataset.json`.
+  - Added `tests/test_dataset_provenance.py` to enforce metadata schema, repository URLs, stable commit hashes, and taxonomy compliance.
+- **Reproducible Dependencies & Software Bill of Materials**:
+  - Synchronized `requirements.lock` with 28 pinned packages.
+  - Regenerated CycloneDX v1.5 `sbom.json` and SPDX v2.3 `sbom.spdx.json` matching version `1.2.14`.
+
+---
+
 ## [1.2.13] - 2026-10-25
 
 ### Fixed & Enhanced

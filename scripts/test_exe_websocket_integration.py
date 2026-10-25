@@ -3,7 +3,7 @@
 scripts/test_exe_websocket_integration.py
 SOC Alert Analyzer - Mandatory Executable / Subprocess WebSocket & Security Integration Test
 
-Exercises Tests A through J against the live application process or compiled standalone Windows executable:
+Exercises Tests A through M against the live application process or compiled standalone Windows executable:
   Test A: Executable Startup & HTTP Readiness Check on dynamic port in isolated DATA_DIR.
   Test B: Authenticate via supported authentication credentials.
   Test C: Obtain short-lived single-use WebSocket ticket via POST /api/v1/auth/ws-ticket.
@@ -76,7 +76,7 @@ def wait_for_ready(base_url: str, max_wait: float = 30.0) -> bool:
 
 def run_websocket_integration_tests(cmd_prefix: list, data_dir: str):
     print("=" * 75)
-    print("SOC Alert Analyzer: Mandatory WebSocket & Lifecycle Integration Suite (Tests A-J)")
+    print("SOC Alert Analyzer: Mandatory WebSocket & Lifecycle Integration Suite (Tests A-M)")
     print(f"Target Command: {' '.join(cmd_prefix)}")
     print(f"Isolated Data Dir: {data_dir}")
     print("=" * 75)
@@ -233,6 +233,113 @@ def run_websocket_integration_tests(cmd_prefix: list, data_dir: str):
         print("  [+] TEST I PASSED: All invalid, reused, and unauthenticated WebSocket attempts securely rejected.")
 
         # ---------------------------------------------------------
+        # TEST K: Real Defensive Alert Delivery & Normalization Verification
+        # ---------------------------------------------------------
+        print("\n[TEST K] Verifying real defensive alert ingestion, normalization, and WebSocket delivery...")
+        st_code, ticket_data_k = make_request("POST", f"{base_url}/api/v1/auth/ws-ticket", headers=analyst_headers)
+        assert st_code == 200, f"Ticket acquisition failed: {ticket_data_k}"
+        ticket_k = ticket_data_k["ticket"]
+
+        with websockets.sync.client.connect(f"{ws_base}/ws/threats?ticket={ticket_k}", open_timeout=5) as ws_conn_k:
+            # Trigger real security drill alert via supported ingestion endpoint
+            st_code, drill_data = make_request("POST", f"{base_url}/api/v1/host/drill", headers=analyst_headers, data={})
+            assert st_code == 200, f"Drill trigger failed: {drill_data}"
+            assert drill_data.get("status") == "success" and "alert" in drill_data
+            expected_alert = drill_data["alert"]
+            expected_id = str(expected_alert["id"])
+
+            # Await broadcast frame on WebSocket pipeline
+            start_t = time.time()
+            received_alert = None
+            duplicate_detected = False
+            while time.time() - start_t < 6.0:
+                try:
+                    frame = ws_conn_k.recv(timeout=4.0)
+                    data = json.loads(frame)
+                    if data.get("type") == "LIVE_THREAT" and data.get("origin") == "SECURITY_DRILL":
+                        if received_alert is None:
+                            received_alert = data.get("alert")
+                        elif str(data.get("alert", {}).get("id")) == expected_id:
+                            duplicate_detected = True
+                except TimeoutError:
+                    break
+                except Exception:
+                    pass
+
+            assert received_alert is not None, "TEST K FAILED: Authorized WebSocket client did not receive LIVE_THREAT frame!"
+            assert str(received_alert.get("id")) == expected_id, f"Alert ID mismatch: expected {expected_id}, got {received_alert.get('id')}"
+            assert received_alert.get("telemetry_origin") == "SECURITY_DRILL"
+            assert received_alert.get("event_type") == expected_alert.get("event_type")
+            assert received_alert.get("severity") in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+            assert received_alert.get("risk_score") == expected_alert.get("risk_score")
+            assert received_alert.get("description") == expected_alert.get("description")
+            assert not duplicate_detected, "TEST K FAILED: Unintended duplicate broadcast detected on WebSocket stream!"
+
+            # Verify Database Persistence
+            st_code, persisted_resp = make_request("GET", f"{base_url}/api/v1/alerts/{expected_id}", headers=analyst_headers)
+            assert st_code == 200, f"Persisted alert lookup failed: {persisted_resp}"
+            persisted_alert = persisted_resp.get("alert", {}) if isinstance(persisted_resp, dict) else {}
+            assert str(persisted_alert.get("id")) == expected_id
+            assert persisted_alert.get("description") == expected_alert.get("description")
+            assert persisted_alert.get("severity") == expected_alert.get("severity")
+
+            print(f"  [+] TEST K PASSED: Alert ID '{expected_id}' normalized, scored ({persisted_alert.get('risk_score')}/100), persisted to database, and delivered via WebSocket.")
+
+            # ---------------------------------------------------------
+            # TEST L: Telemetry Origin Isolation & Authorization Protection
+            # ---------------------------------------------------------
+            print("\n[TEST L] Verifying unauthorized clients cannot access protected telemetry...")
+            # 1. Unauthenticated client cannot obtain WebSocket ticket
+            st_code, unauth_ticket_resp = make_request("POST", f"{base_url}/api/v1/auth/ws-ticket")
+            assert st_code in (401, 403), f"Expected 401/403 for unauthenticated ticket request, got {st_code}: {unauth_ticket_resp}"
+
+            # 2. Unauthenticated client cannot access restricted host alerts
+            st_code, unauth_alert_resp = make_request("GET", f"{base_url}/api/v1/alerts/{expected_id}")
+            assert st_code in (401, 403), f"Expected 401/403 for unauthenticated alert access, got {st_code}"
+
+            print("  [+] TEST L PASSED: Strict authorization enforced; protected telemetry inaccessible to unauthorized clients.")
+
+            # ---------------------------------------------------------
+            # TEST M: Independent Delivery while Monitoring is Paused & Continuity on Resume
+            # ---------------------------------------------------------
+            print("\n[TEST M] Verifying independent event delivery while Host Sensor is PAUSED...")
+            # Pause host sensor
+            st_code, pause_m = make_request("POST", f"{base_url}/api/v1/host/monitor/toggle?active=false", headers=analyst_headers)
+            assert st_code == 200 and pause_m.get("host_monitoring_active") is False
+
+            # Ingest drill alert while host sensor is paused
+            st_code, drill_m = make_request("POST", f"{base_url}/api/v1/host/drill", headers=analyst_headers, data={})
+            assert st_code == 200 and drill_m.get("status") == "success"
+            expected_m_id = str(drill_m["alert"]["id"])
+
+            # Verify client still receives the independent drill event over WebSocket
+            start_m = time.time()
+            received_m = None
+            while time.time() - start_m < 5.0:
+                try:
+                    frame = ws_conn_k.recv(timeout=3.0)
+                    data = json.loads(frame)
+                    if data.get("type") == "LIVE_THREAT" and str(data.get("alert", {}).get("id")) == expected_m_id:
+                        received_m = data.get("alert")
+                        break
+                except TimeoutError:
+                    break
+                except Exception:
+                    pass
+
+            assert received_m is not None, "TEST M FAILED: Independent drill alert was not received while host sensor is paused!"
+            assert str(received_m.get("id")) == expected_m_id
+
+            # Resume host sensor
+            st_code, resume_m = make_request("POST", f"{base_url}/api/v1/host/monitor/toggle?active=true", headers=analyst_headers)
+            assert st_code == 200 and resume_m.get("host_monitoring_active") is True
+
+            # Confirm WebSocket stream continues functioning normally
+            ws_conn_k.send("ping")
+            assert ws_conn_k.recv(timeout=4.0) == "pong"
+            print("  [+] TEST M PASSED: Independent drill alerts deliver while paused; host sensor resumes cleanly.")
+
+        # ---------------------------------------------------------
         # TEST J: Clean Shutdown & Subprocess Termination
         # ---------------------------------------------------------
         print("\n[TEST J] Clean shutdown and process termination...")
@@ -245,7 +352,7 @@ def run_websocket_integration_tests(cmd_prefix: list, data_dir: str):
         print("  [+] TEST J PASSED: Process cleanly terminated.")
 
     print("\n" + "=" * 75)
-    print("ALL MANDATORY WEBSOCKET TESTS (A through J) PASSED SUCCESSFULLY!")
+    print("ALL MANDATORY WEBSOCKET TESTS (A through M) PASSED SUCCESSFULLY!")
     print("=" * 75)
 
 

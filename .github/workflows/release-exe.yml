@@ -68,7 +68,7 @@ jobs:
         run: |
           python scripts/test_exe_lifecycle_integration.py --exe dist/SOC_Alert_Analyzer.exe
 
-      - name: Run Executable WebSocket Handshake & Security Integration Test Suite (Tests A-J)
+      - name: Run Executable WebSocket Handshake, Live Alert Delivery & Security Integration Test Suite (Tests A-M)
         run: |
           python scripts/test_exe_websocket_integration.py --exe dist/SOC_Alert_Analyzer.exe
 
