@@ -2,8 +2,10 @@
 
 **Release Tag:** [v1.2.14](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases/tag/v1.2.14)  
 **Release Date:** October 25, 2026  
-**Authoritative Binary SHA-256 (Windows x64 Executable):** `87261b40aef23b4566b09388b4b689cd8fc0fb5c7aa3d749158de700cb91cf4d`  
-**Standalone EXE Size:** 54,118,248 bytes  
+**Authoritative Binary SHA-256 (GitHub Actions Runner):** `79fae0c0471d9a52f14548bd5c999ddd9ebb6af614389f1df2be26cab9de0db4`  
+**Standalone EXE Size (Runner):** 25,266,867 bytes (Windows Server 2022 / Python 3.12)  
+**Separate Local Build SHA-256 (not the published release artifact):** `87261b40aef23b4566b09388b4b689cd8fc0fb5c7aa3d749158de700cb91cf4d`  
+**Separate Local Build EXE Size:** 54,118,248 bytes (Windows 11 / Python 3.13)  
 **Test Suite Status:** 321 collected, 321 passed, 0 skipped, 0 failed (Coverage: 86.60%; ≥85% CI floor)  
 **Browser Testing:** 10/10 genuine Playwright Chromium browser scenarios executed and passed with 0 skips  
 **Security Scans:** Bandit AST SAST (0 issues), Flake8 (0 errors), Pip-Audit (0 vulnerabilities)  
@@ -49,15 +51,22 @@
 
 ---
 
-### 🔐 Verified Release Artifacts & SHA-256 Checksum
+### 🔐 Verified Release Artifacts & SHA-256 Checksums
 
+#### Official GitHub Release Asset (Windows Server 2022 / Python 3.12 runner)
 ```text
-87261b40aef23b4566b09388b4b689cd8fc0fb5c7aa3d749158de700cb91cf4d  SOC_Alert_Analyzer.exe
+79fae0c0471d9a52f14548bd5c999ddd9ebb6af614389f1df2be26cab9de0db4  SOC_Alert_Analyzer.exe
 ```
-* **Binary Size**: 54,118,248 bytes
-* **Verification Command**:
+* **Official Binary Size**: 25,266,867 bytes
+* **Official Verification Command**:
   ```powershell
   python scripts/verify_release_checksum.py --verify dist/SHA256SUMS.txt
   ```
+
+#### Standalone Windows Executable (Local Build: Windows 11 / Python 3.13)
+```text
+87261b40aef23b4566b09388b4b689cd8fc0fb5c7aa3d749158de700cb91cf4d  SOC_Alert_Analyzer.exe
+```
+* **Local Binary Size**: 54,118,248 bytes
 
 **Full Changelog**: https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/compare/v1.2.13...v1.2.14

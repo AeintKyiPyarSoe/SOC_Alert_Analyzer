@@ -128,9 +128,9 @@ The behavioral detection engine is empirically evaluated using both development 
    Download `SOC_Alert_Analyzer.exe` and `SHA256SUMS.txt` from the [Latest Release](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases).
 
 2. **Verify Cryptographic SHA-256 Integrity**:
-   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (54,118,248 bytes) is:
+   Verify the downloaded binary against the official checksum before running. The authoritative digest for the verified Windows standalone executable (25,266,867 bytes) is:
    ```text
-   87261b40aef23b4566b09388b4b689cd8fc0fb5c7aa3d749158de700cb91cf4d  SOC_Alert_Analyzer.exe
+   79fae0c0471d9a52f14548bd5c999ddd9ebb6af614389f1df2be26cab9de0db4  SOC_Alert_Analyzer.exe
    ```
 
    * **Method 1: Windows PowerShell**
