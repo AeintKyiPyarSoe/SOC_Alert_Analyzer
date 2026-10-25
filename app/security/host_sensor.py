@@ -96,24 +96,45 @@ class HostSecuritySensor:
         except Exception:
             self.known_pids = set()
         self.known_startup_files: Set[str] = self._get_startup_files()
-        self.scan_in_progress: bool = False
+        self._worker_lock = threading.Lock()
+        self._active_workers: int = 0
+        self._active_automatic_workers: int = 0
+        self._active_manual_workers: int = 0
         self.scan_generation: int = 0
         self._cancel_event = threading.Event()
 
+    @property
+    def scan_in_progress(self) -> bool:
+        with self._worker_lock:
+            return self._active_workers > 0
+
+    @property
+    def auto_scan_in_progress(self) -> bool:
+        with self._worker_lock:
+            return self._active_automatic_workers > 0
+
+    @property
+    def manual_scan_in_progress(self) -> bool:
+        with self._worker_lock:
+            return self._active_manual_workers > 0
+
     def request_cancellation(self) -> int:
-        """Signals active and pending audits to cancel immediately and increments scan generation."""
+        """Signals active and pending automatic audits to cancel immediately and increments scan generation."""
         self._cancel_event.set()
-        self.scan_generation += 1
-        return self.scan_generation
+        with self._worker_lock:
+            self.scan_generation += 1
+            return self.scan_generation
 
     def reset_cancellation(self) -> None:
         """Clears the cancellation signal for subsequent audit cycles."""
         self._cancel_event.clear()
 
-    def is_scan_cancelled(self, generation: Optional[int] = None) -> bool:
+    def is_scan_cancelled(self, generation: Optional[int] = None, is_manual: bool = False) -> bool:
         """
-        Check if cancellation was requested globally, by generation mismatch, or via stream manager.
+        Check if cancellation was requested. Manual scans remain independent of automatic scan cancellation.
         """
+        if is_manual:
+            return False
         if self._cancel_event.is_set():
             return True
         if generation is not None and generation != self.scan_generation:
@@ -126,19 +147,34 @@ class HostSecuritySensor:
             pass
         return False
 
-    async def wait_quiescence(self, timeout: float = 5.0) -> bool:
+    async def wait_quiescence(self, timeout: float = 5.0, wait_for_manual: bool = False) -> bool:
         """
-        Asynchronously awaits completion of any running scan or worker thread.
+        Asynchronously awaits completion of any running automatic scan worker (or all workers if wait_for_manual=True).
         Returns True if quiescent within timeout, False if timed out.
         """
         import asyncio
         start_t = time.time()
-        while self.scan_in_progress:
+        while True:
+            with self._worker_lock:
+                active = self._active_workers if wait_for_manual else self._active_automatic_workers
+            if active == 0:
+                return True
             if time.time() - start_t > timeout:
-                logger.warning(f"Host sensor wait_quiescence timed out after {timeout}s (scan still in progress).")
+                logger.warning(f"Host sensor wait_quiescence timed out after {timeout}s (active workers: {active}).")
                 return False
             await asyncio.sleep(0.05)
-        return True
+
+    def wait_quiescence_sync(self, timeout: float = 5.0, wait_for_manual: bool = False) -> bool:
+        """Synchronously awaits completion of scan workers."""
+        start_t = time.time()
+        while True:
+            with self._worker_lock:
+                active = self._active_workers if wait_for_manual else self._active_automatic_workers
+            if active == 0:
+                return True
+            if time.time() - start_t > timeout:
+                return False
+            time.sleep(0.05)
 
     def _is_signature_seen_recent(self, sig: str, max_age_seconds: Optional[int] = None) -> bool:
         """
@@ -939,15 +975,24 @@ class HostSecuritySensor:
             db.flush()
             created_alerts.append(alert)
 
-        if check_active and self.is_scan_cancelled(current_gen):
+        is_manual = not check_active
+        if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
             logger.info("Host monitoring was paused or cancelled during audit; discarding in-flight findings and rolling back.")
             db.rollback()
             return []
 
         if created_alerts:
+            # Correlate alerts in the same transaction
+            IncidentCorrelator.correlate_alerts(db, commit=False)
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
+                logger.info("Host monitoring was paused or cancelled before commit; rolling back alerts and incidents.")
+                db.rollback()
+                return []
             db.commit()
-            IncidentCorrelator.correlate_alerts(db)
         elif raw_events:
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
+                db.rollback()
+                return []
             db.commit()
 
         return created_alerts
@@ -955,62 +1000,86 @@ class HostSecuritySensor:
     def run_fast_audit(self, db: Session, check_active: bool = False, generation: Optional[int] = None) -> List[Alert]:
         """Runs fast, sub-second differential checks on new processes, active sockets, and startup folder."""
         current_gen = generation if generation is not None else self.scan_generation
-        if check_active and self.is_scan_cancelled(current_gen):
+        is_manual = not check_active
+        if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
             db.rollback()
             return []
 
-        self.scan_in_progress = True
+        with self._worker_lock:
+            self._active_workers += 1
+            if check_active:
+                self._active_automatic_workers += 1
+            else:
+                self._active_manual_workers += 1
+
         try:
             raw_events = []
             raw_events.extend(self.audit_new_processes())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_network_sockets())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_startup_folder())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             return self._ingest_events(raw_events, db, check_active=check_active, generation=current_gen)
         finally:
-            self.scan_in_progress = False
+            with self._worker_lock:
+                self._active_workers = max(0, self._active_workers - 1)
+                if check_active:
+                    self._active_automatic_workers = max(0, self._active_automatic_workers - 1)
+                else:
+                    self._active_manual_workers = max(0, self._active_manual_workers - 1)
 
     def run_full_audit(self, db: Session, check_active: bool = False, generation: Optional[int] = None) -> List[Alert]:
         """Runs all live host security audits, normalizes findings, commits to DB, and correlates."""
         current_gen = generation if generation is not None else self.scan_generation
-        if check_active and self.is_scan_cancelled(current_gen):
+        is_manual = not check_active
+        if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
             db.rollback()
             return []
 
-        self.scan_in_progress = True
+        with self._worker_lock:
+            self._active_workers += 1
+            if check_active:
+                self._active_automatic_workers += 1
+            else:
+                self._active_manual_workers += 1
+
         try:
             raw_events = []
             raw_events.extend(self.audit_processes())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_network_sockets())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_startup_folder())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_firewall_posture())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             raw_events.extend(self.audit_event_logs())
-            if check_active and self.is_scan_cancelled(current_gen):
+            if check_active and self.is_scan_cancelled(current_gen, is_manual=is_manual):
                 db.rollback()
                 return []
             return self._ingest_events(raw_events, db, check_active=check_active, generation=current_gen)
         finally:
-            self.scan_in_progress = False
+            with self._worker_lock:
+                self._active_workers = max(0, self._active_workers - 1)
+                if check_active:
+                    self._active_automatic_workers = max(0, self._active_automatic_workers - 1)
+                else:
+                    self._active_manual_workers = max(0, self._active_manual_workers - 1)
 
     def run_test_drill(self, db: Session) -> Dict[str, Any]:
         """

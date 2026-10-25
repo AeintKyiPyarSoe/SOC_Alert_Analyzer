@@ -13,6 +13,7 @@ Usage:
 
 import os
 import sys
+import subprocess
 import json
 import uuid
 import re
@@ -52,10 +53,20 @@ RUNTIME_BASE_PACKAGES = [
 ]
 
 
+def get_git_commit_hash() -> str:
+    """Resolves current source commit SHA."""
+    try:
+        res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
+        return res.stdout.strip()
+    except Exception:
+        return "UNKNOWN"
+
+
 def resolve_dependency_versions(requirements_path: Path) -> dict:
     """
     Dynamically parses requirements.txt and resolves exact installed versions
-    and required transitive dependencies.
+    from installed distributions. Fails generation if required package metadata cannot be resolved.
+    Eliminates unsupported 'latest' and hardcoded fallback substitutions.
     """
     discovered = set(RUNTIME_BASE_PACKAGES)
 
@@ -63,22 +74,24 @@ def resolve_dependency_versions(requirements_path: Path) -> dict:
         for line in requirements_path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line and not line.startswith("#"):
-                # Clean package name from requirements line (e.g. uvicorn[standard]>=0.28.0)
                 pkg = re.split(r"[><=~;!]", line)[0].split("[")[0].strip()
                 if pkg:
                     discovered.add(pkg)
 
     pinned = {}
+    missing = []
     for pkg in sorted(discovered):
         try:
             ver = importlib.metadata.version(pkg)
             pinned[pkg] = ver
-        except Exception:
-            # Fallback for platform-specific packages not installed on current host (e.g. psycopg2-binary on pure Windows desktop)
-            if pkg == "psycopg2-binary":
-                pinned[pkg] = "2.9.10"
-            else:
-                pinned[pkg] = "latest"
+        except importlib.metadata.PackageNotFoundError:
+            missing.append(pkg)
+
+    if missing:
+        raise RuntimeError(
+            f"Failed to resolve installed package version metadata for: {missing}. "
+            "All declared dependencies must be installed in the build environment to generate an authentic SBOM."
+        )
 
     return pinned
 
@@ -134,8 +147,12 @@ def generate_cyclonedx_sbom(output_path: Path, pinned_deps: dict, app_version: s
                 {
                     "vendor": "SOC Alert Analyzer Project",
                     "name": "SBOM Generator",
-                    "version": "1.1.0"
+                    "version": "1.2.0"
                 }
+            ],
+            "properties": [
+                {"name": "source:commit", "value": get_git_commit_hash()},
+                {"name": "inventory:scope", "value": "Resolved direct and transitive runtime dependencies from installed distributions"}
             ],
             "component": {
                 "type": "application",

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.16] - 2026-10-25
+
+### Fixed & Enhanced
+- **Deterministic Lifecycle Lock Ownership & Concurrency Safety**:
+  - Replaced private attribute access (syncio.Lock._loop) in pp/security/stream.py with explicit owner event loop tracking (self._owner_lifecycle_lock_loop) guarded by 	hreading.Lock().
+  - Guaranteed exactly one stable lifecycle lock per active event loop, preventing lock recreation during uncontended execution.
+  - Added thread-safe cross-thread coroutine dispatching and synchronous wrappers (start_simulation_sync, stop_simulation_sync, shutdown_sync).
+  - Added deterministic concurrency regression tests verifying lock reuse, mutual exclusion, and shutdown resilience.
+- **Strict Cancellation Timeout & Worker Quiescence Tracking**:
+  - Implemented typed TaskCancellationResult enum (TERMINATED, TIMED_OUT, ALREADY_COMPLETED, FAILED) in ThreatStreamManager._cancel_and_await_task().
+  - Refactored HostSecuritySensor with atomic worker counters (uto_scan_in_progress, manual_scan_in_progress) to prevent prematurely reporting PAUSED while audits remain in-flight.
+  - Handled cancellation timeout deadlines by reporting PAUSING_TIMED_OUT rather than masking un-terminated background tasks.
+  - Enforced single-transaction atomicity in _ingest_events and incident correlation with rollback on pause.
+- **Packaged Executable Real Log Redaction Verification (Test N)**:
+  - Extended binary integration suite (scripts/test_exe_websocket_integration.py) with Test N asserting complete redaction of WebSocket tickets, API keys, credentials, and secrets directly from captured binary stdout/stderr streams.
+  - Added process tree termination (	askkill /F /T /PID on Windows) to prevent pipe deadlock and orphaned child processes during binary integration tests.
+- **Dependency Locking, Audit Integrity & SBOM Standardization**:
+  - Audited and regenerated 
+equirements.lock, pinning exact versions without unpinned fallbacks or vulnerabilities (pip-audit verified 0 vulnerabilities).
+  - Regenerated CycloneDX v1.5 sbom.json and SPDX v2.3 sbom.spdx.json dynamically resolving installed distribution metadata.
+  - Updated GitHub Actions CI workflows (ci.yml, 
+elease-exe.yml) to enforce pip-audit -r requirements.lock.
+- **Independently Sourced Detection Provenance & Scope Transparency**:
+  - Updated sample_data/independent_telemetry/independent_telemetry_dataset.json and pp/security/endpoint_attack_evaluator.py to record provenance breakdown (curated_sigma, mitre_car, tomic_red_team, held_out_telemetry).
+  - Added explicit evaluation scope and limitations disclaimer to docs/independent_telemetry_evaluation_report.json.
+- **Timezone-Safe Datetime Comparison**:
+  - Added timezone normalization helper _to_utc() in pp/security/correlator.py preventing offset-naive vs. offset-aware comparison errors in SQLite environments.
+- **Standalone Windows Executable (v1.2.16)**:
+  - Built standalone Windows executable dist/SOC_Alert_Analyzer.exe (56,709,018 bytes, SHA-256 4ad117695e55744d7181f6adc3364f5d3564473a8d4f154adcff0edede30692e).
+  - Passed 100% of standalone binary tests: Tests A through N in 	est_exe_websocket_integration.py and Tests A through G in 	est_exe_lifecycle_integration.py.
+
+---
+
 ## [1.2.15] - 2026-10-25
 
 ### Fixed & Enhanced

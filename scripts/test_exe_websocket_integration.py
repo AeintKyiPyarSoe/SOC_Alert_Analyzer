@@ -344,15 +344,51 @@ def run_websocket_integration_tests(cmd_prefix: list, data_dir: str):
         # ---------------------------------------------------------
         print("\n[TEST J] Clean shutdown and process termination...")
     finally:
-        proc.terminate()
+        if sys.platform == 'win32':
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
+        else:
+            proc.terminate()
         try:
-            proc.wait(timeout=5)
+            stdout_data, stderr_data = proc.communicate(timeout=8)
         except subprocess.TimeoutExpired:
             proc.kill()
+            stdout_data, stderr_data = proc.communicate(timeout=5)
         print("  [+] TEST J PASSED: Process cleanly terminated.")
 
+    # ---------------------------------------------------------
+    # TEST N: Packaged Executable Real Log Redaction & Credential Protection
+    # ---------------------------------------------------------
+    print("\n[TEST N] Verifying executable log redaction & credential protection directly against binary logs...")
+    combined_logs = stdout_data.decode("utf-8", errors="replace") + "\n" + stderr_data.decode("utf-8", errors="replace")
+
+    # 1. Ephemeral WebSocket tickets must NEVER appear unredacted in executable logs
+    for t_label, t_val in [("ticket_1", ticket_1), ("ticket_2", ticket_2), ("ticket_k", ticket_k)]:
+        assert t_val not in combined_logs, f"SECURITY DEFECT: Ephemeral WebSocket {t_label} leaked unredacted in executable logs!"
+
+    # 2. Bogus / tampered ticket query values must NEVER appear unredacted
+    assert "bogus_nonexistent_ticket_12345" not in combined_logs, (
+        "SECURITY DEFECT: Invalid WebSocket ticket value leaked in executable logs!"
+    )
+
+    # 3. Secret keys and API keys must NEVER appear in logs
+    for k_label, k_val in [("ADMIN_API_KEY", admin_key), ("ANALYST_API_KEY", analyst_key), ("SECRET_KEY", secret_key)]:
+        assert k_val not in combined_logs, f"SECURITY DEFECT: {k_label} leaked in executable logs!"
+
+    # 4. Redaction verification: access logging must demonstrate query ticket parameter redaction
+    redacted_patterns = ["ticket=[REDACTED]", "ticket=%5BREDACTED%5D", "ticket=%5Bredacted%5D"]
+    assert any(p in combined_logs for p in redacted_patterns), (
+        "SECURITY DEFECT: Expected redacted ticket parameter 'ticket=[REDACTED]' not found in executable logs!"
+    )
+
+    # 5. Useful operational diagnostics remain visible
+    assert any(diag in combined_logs for diag in ["/api/v1/auth", "GET /api/v1/stream/status", "WebSocket"]), (
+        "DIAGNOSTIC DEFECT: Operational route paths missing from executable logs."
+    )
+
+    print("  [+] TEST N PASSED: Genuine tickets, invalid tokens, and secrets are strictly redacted in executable logs.")
+
     print("\n" + "=" * 75)
-    print("ALL MANDATORY WEBSOCKET TESTS (A through M) PASSED SUCCESSFULLY!")
+    print("ALL MANDATORY WEBSOCKET & SECURITY TESTS (A through N) PASSED SUCCESSFULLY!")
     print("=" * 75)
 
 

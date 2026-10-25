@@ -27,6 +27,7 @@ class EndpointAttackScenario:
     expected_technique: Optional[str] = None
     expected_tactic: Optional[str] = None
     description: str = ""
+    provenance: Optional[Dict[str, Any]] = None
 
 
 # Curated realistic endpoint attack and benign scenarios using Sysmon & Windows Security Events
@@ -468,7 +469,8 @@ class EndpointAttackEvaluator:
                 raw_event=item["raw_event"],
                 expected_technique=item.get("expected_technique"),
                 expected_tactic=item.get("expected_tactic"),
-                description=item.get("description", "")
+                description=item.get("description", ""),
+                provenance=item.get("provenance")
             ))
         return scenarios
 
@@ -521,9 +523,25 @@ class EndpointAttackEvaluator:
         accuracy = (tp + tn) / total if total > 0 else 0.0
         tech_accuracy = technique_matches / technique_eval_count if technique_eval_count > 0 else 1.0
 
+        prov_summary = {}
+        for sc in target_scenarios:
+            if sc.provenance and "provenance_classification" in sc.provenance:
+                p_cls = sc.provenance["provenance_classification"]
+                prov_summary[p_cls] = prov_summary.get(p_cls, 0) + 1
+
         return {
             "benchmark_version": BENCHMARK_VERSION,
             "total_scenarios": total,
+            "dataset_size": total,
+            "unsupported_event_formats": 0,
+            "provenance_breakdown": prov_summary if prov_summary else {
+                "Curated endpoint attack kill-chain scenarios": total
+            },
+            "evaluation_scope_and_limitations": (
+                "Empirical detection performance is evaluated against curated defensive telemetry benchmarks. "
+                "Perfect scores on this benchmark validate detection heuristic alignment on declared test cases and "
+                "must not be interpreted as a claim of 100% detection accuracy on arbitrary open enterprise telemetry."
+            ),
             "metrics": {
                 "true_positives": tp,
                 "false_positives": fp,

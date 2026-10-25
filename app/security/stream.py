@@ -1,11 +1,19 @@
 import asyncio
 import logging
 import threading
+from enum import Enum
 from typing import Dict, Any, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from app.config import settings, load_monitoring_preferences, save_monitoring_preferences
 
 logger = logging.getLogger(__name__)
+
+class TaskCancellationResult(str, Enum):
+    TERMINATED = "TERMINATED"
+    TIMED_OUT = "TIMED_OUT"
+    ALREADY_COMPLETED = "ALREADY_COMPLETED"
+    FAILED = "FAILED"
+
 
 class ThreatStreamManager:
     """
@@ -33,23 +41,34 @@ class ThreatStreamManager:
         self.last_persistence_status: Dict[str, Any] = {"persisted": True, "persistence_error": None}
         self._lock = asyncio.Lock()
         self._owner_lifecycle_lock: Optional[asyncio.Lock] = None
+        self._owner_lifecycle_lock_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread_lifecycle_init_lock = threading.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
         self._simulator_task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._bg_loop: Optional[asyncio.AbstractEventLoop] = None
         self._transition_state: Optional[str] = None
         self._sim_transition_state: Optional[str] = None
+        self._transition_error: Optional[str] = None
+        self._last_lifecycle_error: Optional[str] = None
+        self._quiescence_confirmed: bool = True
+        self._last_cancellation_result: Optional[TaskCancellationResult] = None
 
     def _get_owner_lock(self) -> asyncio.Lock:
         """
         Returns or creates an asyncio.Lock bound to the designated owner event loop.
-        Ensures thread-safe and loop-safe initialization without holding cross-thread locks across awaits.
+        Explicitly tracks the owner event loop without relying on private asyncio.Lock._loop internals.
+        Guarantees thread-safe and loop-safe initialization without holding any threading lock across awaits.
         """
         owner_loop = self._get_target_loop()
-        if (
-            self._owner_lifecycle_lock is None
-            or getattr(self._owner_lifecycle_lock, "_loop", None) is not owner_loop
-        ):
+        with self._thread_lifecycle_init_lock:
+            if (
+                self._owner_lifecycle_lock is not None
+                and self._owner_lifecycle_lock_loop is owner_loop
+                and not owner_loop.is_closed()
+            ):
+                return self._owner_lifecycle_lock
+
             try:
                 cur = asyncio.get_running_loop()
             except RuntimeError:
@@ -62,7 +81,9 @@ class ThreatStreamManager:
                     return asyncio.Lock()
                 fut = asyncio.run_coroutine_threadsafe(_make_lock(), owner_loop)
                 self._owner_lifecycle_lock = fut.result(timeout=5.0)
-        return self._owner_lifecycle_lock
+
+            self._owner_lifecycle_lock_loop = owner_loop
+            return self._owner_lifecycle_lock
 
     def _ensure_background_loop(self) -> asyncio.AbstractEventLoop:
         """Returns or provisions a dedicated persistent daemon event loop for background tasks."""
@@ -88,11 +109,11 @@ class ThreatStreamManager:
 
     def _get_target_loop(self) -> asyncio.AbstractEventLoop:
         """Returns the registered application loop if active, or provisions the background loop."""
-        if self._loop and self._loop.is_running():
+        if self._loop and self._loop.is_running() and not self._loop.is_closed():
             return self._loop
         try:
             cur = asyncio.get_running_loop()
-            if self._loop is cur and cur.is_running():
+            if self._loop is cur and cur.is_running() and not cur.is_closed():
                 return cur
         except RuntimeError:
             pass
@@ -112,7 +133,15 @@ class ThreatStreamManager:
             fut = asyncio.run_coroutine_threadsafe(_spawn_helper(), loop)
             return fut.result(timeout=5.0)
 
-    async def _cancel_and_await_task(self, task: asyncio.Task, timeout: float = 5.0):
+    async def _cancel_and_await_task(self, task: Optional[asyncio.Task], timeout: float = 5.0) -> TaskCancellationResult:
+        """
+        Cancels and cleanly awaits completion of an asyncio Task across event loops.
+        Returns explicit TaskCancellationResult (TERMINATED, TIMED_OUT, ALREADY_COMPLETED, FAILED)
+        rather than suppressing timeout or failure exceptions.
+        """
+        if task is None or task.done():
+            return TaskCancellationResult.ALREADY_COMPLETED
+
         task_loop = getattr(task, "get_loop", lambda: None)()
         try:
             current_loop = asyncio.get_running_loop()
@@ -122,35 +151,49 @@ class ThreatStreamManager:
         if current_loop and current_loop is task_loop:
             task.cancel()
             try:
-                await asyncio.wait_for(task, timeout=timeout)
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+                return TaskCancellationResult.TERMINATED if task.done() else TaskCancellationResult.TIMED_OUT
             except (asyncio.CancelledError, TimeoutError, asyncio.TimeoutError):
-                logger.debug(f"Task cancellation finished or timed out after {timeout}s: {task}")
+                if task.done():
+                    return TaskCancellationResult.TERMINATED
+                logger.warning(f"Task cancellation timed out after {timeout}s: {task}")
+                return TaskCancellationResult.TIMED_OUT
             except Exception as e:
-                logger.debug(f"Task cancellation finished with exception: {e}")
+                logger.error(f"Task cancellation finished with exception: {e}", exc_info=True)
+                return TaskCancellationResult.FAILED if task.done() else TaskCancellationResult.TIMED_OUT
         elif task_loop and task_loop.is_running():
             async def _worker():
                 task.cancel()
                 try:
                     await asyncio.wait_for(task, timeout=timeout)
+                    return TaskCancellationResult.TERMINATED
                 except (asyncio.CancelledError, TimeoutError, asyncio.TimeoutError):
-                    pass
+                    return TaskCancellationResult.TERMINATED if task.done() else TaskCancellationResult.TIMED_OUT
                 except Exception:
-                    pass
+                    return TaskCancellationResult.FAILED if task.done() else TaskCancellationResult.TIMED_OUT
+
             fut = asyncio.run_coroutine_threadsafe(_worker(), task_loop)
             try:
-                fut.result(timeout=timeout + 1.0)
+                res = fut.result(timeout=timeout + 1.0)
+                return res
             except Exception as e:
-                logger.debug(f"Cross-loop cancellation future completed with: {e}")
+                logger.warning(f"Cross-loop cancellation future completed with: {e}")
+                return TaskCancellationResult.TIMED_OUT if not task.done() else TaskCancellationResult.TERMINATED
         else:
             task.cancel()
+            return TaskCancellationResult.TERMINATED if task.done() else TaskCancellationResult.TIMED_OUT
 
     def get_status(self) -> Dict[str, Any]:
         """
         Return authoritative monitoring and simulation lifecycle status.
         Single source of truth for both REST and WebSocket status checks.
         Accurately reports task failure, clean exit, and in-flight transitions,
-        strictly preventing claiming ACTIVE when the background task is not running.
+        strictly preventing claiming ACTIVE or PAUSED when workers are active or timed out.
         """
+        from app.security.host_sensor import host_sensor
+        auto_scan_in_progress = getattr(host_sensor, "auto_scan_in_progress", False)
+        scan_in_progress = getattr(host_sensor, "scan_in_progress", False)
+
         task_running = self._monitor_task is not None and not self._monitor_task.done()
         task_error = None
         if self._monitor_task is not None and self._monitor_task.done():
@@ -161,16 +204,26 @@ class ThreatStreamManager:
             except (asyncio.CancelledError, Exception):
                 pass
 
+        if self._transition_error == "PAUSING_TIMED_OUT":
+            if not auto_scan_in_progress and not scan_in_progress and (self._monitor_task is None or self._monitor_task.done()):
+                self._transition_error = None
+                self._quiescence_confirmed = True
+                self._last_lifecycle_error = None
+
         if self._transition_state:
             effective_state = self._transition_state
+        elif self._transition_error:
+            effective_state = self._transition_error
         elif not self.host_monitoring_active:
-            effective_state = "PAUSED"
+            if not self._quiescence_confirmed or auto_scan_in_progress:
+                effective_state = "PAUSING_TIMED_OUT"
+            else:
+                effective_state = "PAUSED"
         elif task_error:
             effective_state = "ERROR"
         elif task_running:
             effective_state = "ACTIVE"
         else:
-            # Desired state is active, but task reference is missing or ended unexpectedly
             effective_state = "STOPPED"
 
         sim_task_running = self._simulator_task is not None and not self._simulator_task.done()
@@ -185,10 +238,12 @@ class ThreatStreamManager:
 
         if task_running:
             task_status = "RUNNING"
+        elif self._transition_error == "PAUSING_TIMED_OUT":
+            task_status = "TIMED_OUT"
         elif task_error:
             task_status = "ERROR"
         elif not self.host_monitoring_active:
-            task_status = "PAUSED"
+            task_status = "PAUSED" if self._quiescence_confirmed and not auto_scan_in_progress else "TIMED_OUT"
         else:
             task_status = "STOPPED"
 
@@ -201,9 +256,6 @@ class ThreatStreamManager:
         else:
             sim_status = "STOPPED"
 
-        from app.security.host_sensor import host_sensor
-        scan_in_progress = getattr(host_sensor, "scan_in_progress", False)
-
         return {
             "host_monitoring_active": (effective_state == "ACTIVE"),
             "monitoring_state": effective_state,
@@ -211,9 +263,13 @@ class ThreatStreamManager:
             "simulation_active": self.simulation_active,
             "task_status": task_status,
             "task_error": task_error,
+            "last_lifecycle_error": self._last_lifecycle_error,
+            "quiescence_confirmed": self._quiescence_confirmed,
+            "cancellation_result": self._last_cancellation_result.value if self._last_cancellation_result else None,
             "simulation_task_status": sim_status,
             "simulation_task_error": sim_task_error,
             "scan_in_progress": scan_in_progress,
+            "auto_scan_in_progress": auto_scan_in_progress,
             "connected_clients": len(self.active_connections),
             "persisted": self.last_persistence_status.get("persisted", True),
             "persistence_error": self.last_persistence_status.get("persistence_error"),
@@ -221,7 +277,12 @@ class ThreatStreamManager:
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         """Record the application event loop for dependable task creation across threads."""
-        self._loop = loop
+        with self._thread_lifecycle_init_lock:
+            if self._loop is not loop:
+                self._loop = loop
+                if self._owner_lifecycle_lock_loop is not loop:
+                    self._owner_lifecycle_lock = None
+                    self._owner_lifecycle_lock_loop = None
 
     async def start_host_monitoring(self, persist: bool = True) -> bool:
         """Start or resume real host security monitoring idempotently."""
@@ -238,16 +299,24 @@ class ThreatStreamManager:
 
     async def _start_host_monitoring_impl(self, persist: bool = True) -> bool:
         async with self._get_owner_lock():
+            from app.security.host_sensor import host_sensor
+            # Prevent starting a new scan generation while previous worker remains active
+            if getattr(host_sensor, "auto_scan_in_progress", False):
+                logger.warning("Cannot start host monitoring while previous audit worker is still active.")
+                return False
+
             # Idempotent start: if already active and background task is running, return immediately
             if self.host_monitoring_active and self._monitor_task is not None and not self._monitor_task.done():
                 return True
 
             self._transition_state = "RESUMING" if not self.host_monitoring_active else "STARTING"
+            self._transition_error = None
             try:
-                from app.security.host_sensor import host_sensor
                 host_sensor.reset_cancellation()
 
                 self.host_monitoring_active = True
+                self._quiescence_confirmed = True
+                self._last_lifecycle_error = None
                 if persist:
                     try:
                         res = save_monitoring_preferences(host_monitoring=True, simulation=self.simulation_active)
@@ -268,7 +337,7 @@ class ThreatStreamManager:
                 self._transition_state = None
             return self.host_monitoring_active
 
-    async def stop_host_monitoring(self, persist: bool = True) -> bool:
+    async def stop_host_monitoring(self, persist: bool = True, timeout: float = 5.0) -> bool:
         """
         Pause real host security monitoring idempotently, serialize lifecycle transitions,
         and cleanly await cancellation of the running background task before returning.
@@ -280,20 +349,29 @@ class ThreatStreamManager:
             current_loop = None
 
         if current_loop is not target_loop and target_loop.is_running():
-            fut = asyncio.run_coroutine_threadsafe(self._stop_host_monitoring_impl(persist), target_loop)
+            fut = asyncio.run_coroutine_threadsafe(self._stop_host_monitoring_impl(persist, timeout=timeout), target_loop)
             return await asyncio.wrap_future(fut)
-        return await self._stop_host_monitoring_impl(persist)
+        return await self._stop_host_monitoring_impl(persist, timeout=timeout)
 
-    async def _stop_host_monitoring_impl(self, persist: bool = True) -> bool:
+    async def _stop_host_monitoring_impl(self, persist: bool = True, timeout: float = 5.0) -> bool:
         async with self._get_owner_lock():
-            # Idempotent stop: if already paused and no task is running, return immediately
-            if not self.host_monitoring_active and (self._monitor_task is None or self._monitor_task.done()):
+            from app.security.host_sensor import host_sensor
+            auto_in_prog = getattr(host_sensor, "auto_scan_in_progress", False)
+            # Idempotent stop: if already paused, no task is running, quiescent, and no prior timeout
+            if (
+                not self.host_monitoring_active
+                and (self._monitor_task is None or self._monitor_task.done())
+                and not auto_in_prog
+                and self._quiescence_confirmed
+                and not self._transition_error
+            ):
                 self._monitor_task = None
+                self._quiescence_confirmed = True
+                self._transition_error = None
                 return False
 
             self._transition_state = "PAUSING"
             try:
-                from app.security.host_sensor import host_sensor
                 host_sensor.request_cancellation()
 
                 self.host_monitoring_active = False
@@ -309,18 +387,36 @@ class ThreatStreamManager:
                         logger.warning(f"Failed to persist host monitoring preference: {e}")
 
                 task = self._monitor_task
+                cancel_res = TaskCancellationResult.ALREADY_COMPLETED
                 if task and not task.done():
-                    await self._cancel_and_await_task(task)
-                    logger.info("Cancelled and awaited host monitor background task.")
-                self._monitor_task = None
+                    cancel_res = await self._cancel_and_await_task(task, timeout=timeout)
+                    self._last_cancellation_result = cancel_res
+                    logger.info(f"Host monitor task cancellation result: {cancel_res.value}")
 
                 # Wait for running audit worker to reach quiescence
-                quiescent = await host_sensor.wait_quiescence(timeout=5.0)
-                if not quiescent:
-                    logger.warning("Host security sensor did not reach full quiescence within 5.0s on stop.")
+                quiescent = await host_sensor.wait_quiescence(timeout=timeout)
+
+                timed_out = (cancel_res == TaskCancellationResult.TIMED_OUT) or (not quiescent) or (task is not None and not task.done())
+                if timed_out:
+                    self._last_lifecycle_error = (
+                        f"Stop timeout: task_cancel={cancel_res.value}, quiescent={quiescent}"
+                    )
+                    self._transition_error = "PAUSING_TIMED_OUT"
+                    self._quiescence_confirmed = False
+                    logger.warning(
+                        f"Host security sensor did not reach full quiescence within 5.0s on stop ({self._last_lifecycle_error})."
+                    )
+                    if task and task.done():
+                        self._monitor_task = None
+                    return False
+                else:
+                    self._monitor_task = None
+                    self._transition_error = None
+                    self._quiescence_confirmed = True
+                    self._last_lifecycle_error = None
+                    return False
             finally:
                 self._transition_state = None
-            return self.host_monitoring_active
 
     async def start_simulation(self, persist: bool = True) -> bool:
         """Start or resume demonstration threat simulation idempotently."""
@@ -453,6 +549,78 @@ class ThreatStreamManager:
 
         return asyncio.run(self.stop_host_monitoring(persist))
 
+    def start_simulation_sync(self, persist: bool = True) -> bool:
+        """Synchronous wrapper for starting simulation across threads."""
+        target_loop = self._loop if (self._loop and self._loop.is_running()) else None
+        if not target_loop:
+            target_loop = self._bg_loop if (self._bg_loop and self._bg_loop.is_running()) else None
+
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if target_loop and target_loop.is_running():
+            if current_loop is target_loop:
+                raise RuntimeError("Cannot synchronously block inside the target event loop")
+            fut = asyncio.run_coroutine_threadsafe(self.start_simulation(persist), target_loop)
+            return fut.result(timeout=10)
+
+        if current_loop and current_loop.is_running():
+            bg = self._ensure_background_loop()
+            fut = asyncio.run_coroutine_threadsafe(self.start_simulation(persist), bg)
+            return fut.result(timeout=10)
+
+        return asyncio.run(self.start_simulation(persist))
+
+    def stop_simulation_sync(self, persist: bool = True) -> bool:
+        """Synchronous wrapper for stopping simulation across threads."""
+        target_loop = self._loop if (self._loop and self._loop.is_running()) else None
+        if not target_loop:
+            target_loop = self._bg_loop if (self._bg_loop and self._bg_loop.is_running()) else None
+
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if target_loop and target_loop.is_running():
+            if current_loop is target_loop:
+                raise RuntimeError("Cannot synchronously block inside the target event loop")
+            fut = asyncio.run_coroutine_threadsafe(self.stop_simulation(persist), target_loop)
+            return fut.result(timeout=10)
+
+        if current_loop and current_loop.is_running():
+            bg = self._ensure_background_loop()
+            fut = asyncio.run_coroutine_threadsafe(self.stop_simulation(persist), bg)
+            return fut.result(timeout=10)
+
+        return asyncio.run(self.stop_simulation(persist))
+
+    def shutdown_sync(self):
+        """Synchronous wrapper for shutting down all streaming and monitoring tasks."""
+        target_loop = self._loop if (self._loop and self._loop.is_running()) else None
+        if not target_loop:
+            target_loop = self._bg_loop if (self._bg_loop and self._bg_loop.is_running()) else None
+
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if target_loop and target_loop.is_running():
+            if current_loop is target_loop:
+                raise RuntimeError("Cannot synchronously block inside the target event loop")
+            fut = asyncio.run_coroutine_threadsafe(self.shutdown(), target_loop)
+            return fut.result(timeout=10)
+
+        if current_loop and current_loop.is_running():
+            bg = self._ensure_background_loop()
+            fut = asyncio.run_coroutine_threadsafe(self.shutdown(), bg)
+            return fut.result(timeout=10)
+
+        return asyncio.run(self.shutdown())
+
     async def shutdown(self):
         """Cleanly cancel and await all background monitoring and simulation tasks without overwriting persisted preferences."""
         try:
@@ -479,6 +647,9 @@ class ThreatStreamManager:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._monitor_task = None
         self._simulator_task = None
+        with self._thread_lifecycle_init_lock:
+            self._owner_lifecycle_lock = None
+            self._owner_lifecycle_lock_loop = None
         try:
             from app.security.host_sensor import host_sensor
             quiescent = await host_sensor.wait_quiescence(timeout=2.0)

@@ -1,6 +1,12 @@
 {
   "benchmark_version": "1.0.0",
   "total_scenarios": 18,
+  "dataset_size": 18,
+  "unsupported_event_formats": 0,
+  "provenance_breakdown": {
+    "Curated endpoint attack kill-chain scenarios": 18
+  },
+  "evaluation_scope_and_limitations": "Empirical detection performance is evaluated against curated defensive telemetry benchmarks. Perfect scores on this benchmark validate detection heuristic alignment on declared test cases and must not be interpreted as a claim of 100% detection accuracy on arbitrary open enterprise telemetry.",
   "metrics": {
     "true_positives": 12,
     "false_positives": 0,

@@ -410,3 +410,352 @@ def test_pause_during_audit_transaction_rollback(db_session, monkeypatch):
 
     # Reset
     stream_manager.host_monitoring_active = True
+
+
+# ==============================================================================
+# PHASE 3: MANDATORY CANCELLATION TIMEOUT & QUIESCENCE REGRESSION TESTS (1-12)
+# ==============================================================================
+
+def test_pause_during_process_enumeration(db_session, monkeypatch):
+    """1. Test cancellation during process enumeration immediately aborts and rolls back."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.models.alert import Alert
+
+    stream_manager.host_monitoring_active = True
+    gen = host_sensor.reset_cancellation()
+
+    orig_audit_proc = host_sensor.audit_processes
+    def cancel_during_proc():
+        stream_manager.host_monitoring_active = False
+        host_sensor.request_cancellation()
+        return orig_audit_proc()
+
+    monkeypatch.setattr(host_sensor, "audit_processes", cancel_during_proc)
+    alerts = host_sensor.run_full_audit(db_session, check_active=True)
+    assert alerts == [], "Expected zero alerts returned when cancelled during process enumeration"
+    assert db_session.query(Alert).count() == 0, "No alerts should be persisted"
+    stream_manager.host_monitoring_active = False
+
+
+def test_pause_during_network_inspection(db_session, monkeypatch):
+    """2. Test cancellation during network socket inspection cleanly rolls back."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.models.alert import Alert
+
+    stream_manager.host_monitoring_active = True
+    host_sensor.reset_cancellation()
+
+    orig_audit_net = host_sensor.audit_network_sockets
+    def cancel_during_net():
+        stream_manager.host_monitoring_active = False
+        host_sensor.request_cancellation()
+        return orig_audit_net()
+
+    monkeypatch.setattr(host_sensor, "audit_network_sockets", cancel_during_net)
+    alerts = host_sensor.run_full_audit(db_session, check_active=True)
+    assert alerts == []
+    assert db_session.query(Alert).count() == 0
+    stream_manager.host_monitoring_active = False
+
+
+def test_pause_during_event_log_collection(db_session, monkeypatch):
+    """3. Test cancellation during event-log collection cleanly rolls back."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.models.alert import Alert
+
+    stream_manager.host_monitoring_active = True
+    host_sensor.reset_cancellation()
+
+    orig_audit_logs = host_sensor.audit_event_logs
+    def cancel_during_logs():
+        stream_manager.host_monitoring_active = False
+        host_sensor.request_cancellation()
+        return orig_audit_logs()
+
+    monkeypatch.setattr(host_sensor, "audit_event_logs", cancel_during_logs)
+    alerts = host_sensor.run_full_audit(db_session, check_active=True)
+    assert alerts == []
+    assert db_session.query(Alert).count() == 0
+    stream_manager.host_monitoring_active = False
+
+
+def test_pause_immediately_before_db_commit(db_session, monkeypatch):
+    """4. Test cancellation immediately before database commit rolls back all staged entities."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.security.correlator import IncidentCorrelator
+    from app.models.alert import Alert
+
+    stream_manager.host_monitoring_active = True
+    host_sensor.reset_cancellation()
+
+    mock_event = {
+        "source_type": "Host_Process_Sensor",
+        "telemetry_origin": "HOST_TELEMETRY",
+        "event_type": "suspicious_command",
+        "description": "Pre-commit cancellation test alert",
+        "timestamp": "2026-10-25 12:00:00",
+        "severity": "HIGH",
+        "risk_score": 75,
+        "mitre_technique": "T1059"
+    }
+
+    monkeypatch.setattr(host_sensor, "audit_processes", lambda: [mock_event])
+    monkeypatch.setattr(host_sensor, "audit_network_sockets", lambda: [])
+    monkeypatch.setattr(host_sensor, "audit_startup_folder", lambda: [])
+    monkeypatch.setattr(host_sensor, "audit_firewall_posture", lambda: [])
+    monkeypatch.setattr(host_sensor, "audit_event_logs", lambda: [])
+
+    orig_correlate = IncidentCorrelator.correlate_alerts
+    def cancel_before_commit(db, window_seconds=None, commit=True):
+        stream_manager.host_monitoring_active = False
+        host_sensor.request_cancellation()
+        return orig_correlate(db, window_seconds=window_seconds, commit=commit)
+
+    monkeypatch.setattr(IncidentCorrelator, "correlate_alerts", cancel_before_commit)
+
+    alerts = host_sensor.run_full_audit(db_session, check_active=True)
+    assert alerts == [], "Staged alerts must be discarded when cancelled before commit"
+    assert db_session.query(Alert).count() == 0, "No alerts may remain in DB"
+    stream_manager.host_monitoring_active = False
+
+
+def test_pause_during_incident_correlation(db_session, monkeypatch):
+    """5. Test cancellation during incident correlation rolls back both alerts and incident records."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.security.correlator import IncidentCorrelator
+    from app.models.alert import Alert
+    from app.models.incident import Incident
+
+    stream_manager.host_monitoring_active = True
+    host_sensor.reset_cancellation()
+
+    mock_event = {
+        "source_type": "Host_Process_Sensor",
+        "telemetry_origin": "HOST_TELEMETRY",
+        "event_type": "suspicious_command",
+        "description": "Mid-correlation cancellation test alert",
+        "timestamp": "2026-10-25 12:00:00",
+        "severity": "HIGH",
+        "risk_score": 80,
+        "mitre_technique": "T1059"
+    }
+
+    monkeypatch.setattr(host_sensor, "audit_processes", lambda: [mock_event])
+    monkeypatch.setattr(host_sensor, "audit_network_sockets", lambda: [])
+    monkeypatch.setattr(host_sensor, "audit_startup_folder", lambda: [])
+    monkeypatch.setattr(host_sensor, "audit_firewall_posture", lambda: [])
+    monkeypatch.setattr(host_sensor, "audit_event_logs", lambda: [])
+
+    def cancel_in_correlator(db, window_seconds=None, commit=True):
+        stream_manager.host_monitoring_active = False
+        host_sensor.request_cancellation()
+        return []
+
+    monkeypatch.setattr(IncidentCorrelator, "correlate_alerts", cancel_in_correlator)
+
+    alerts = host_sensor.run_full_audit(db_session, check_active=True)
+    assert alerts == []
+    assert db_session.query(Alert).count() == 0
+    assert db_session.query(Incident).count() == 0
+    stream_manager.host_monitoring_active = False
+
+
+def test_pause_when_worker_blocked_times_out(monkeypatch):
+    """6. Test stop operation when worker is blocked: cannot falsely report PAUSED."""
+    async def _run():
+        from app.security.stream import ThreatStreamManager
+        from app.security.host_sensor import host_sensor
+
+        mgr = ThreatStreamManager()
+        # Simulate active worker blocked
+        monkeypatch.setattr(type(host_sensor), "auto_scan_in_progress", property(lambda self: True))
+        async def mock_wait_quiescence(timeout=5.0):
+            return False
+
+        monkeypatch.setattr(host_sensor, "wait_quiescence", mock_wait_quiescence)
+
+        # Attempt to stop
+        stopped = await mgr.stop_host_monitoring(persist=False, timeout=0.05)
+        assert stopped is False
+
+        # Status must accurately report incomplete transition / timeout, NOT PAUSED
+        status = mgr.get_status()
+        assert status["quiescence_confirmed"] is False
+        assert status["monitoring_state"] == "PAUSING_TIMED_OUT"
+        assert status["task_status"] == "TIMED_OUT"
+        assert status["last_lifecycle_error"] is not None
+
+        await mgr.shutdown()
+
+    asyncio.run(_run())
+
+
+def test_cancellation_timeout_preserves_task_reference(monkeypatch):
+    """7. Test cancellation timeout preserves running task reference for diagnosis."""
+    async def _run():
+        from app.security.stream import ThreatStreamManager, TaskCancellationResult
+
+        should_exit = False
+        async def _stubborn_worker():
+            while not should_exit:
+                try:
+                    await asyncio.sleep(0.1)
+                except asyncio.CancelledError:
+                    try:
+                        asyncio.current_task().uncancel()
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.sleep(1.0)
+                    except asyncio.CancelledError:
+                        pass
+
+        mgr = ThreatStreamManager()
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(_stubborn_worker())
+        await asyncio.sleep(0.01)
+        mgr._monitor_task = task
+        mgr.host_monitoring_active = True
+
+        # Stop monitoring with short timeout
+        stopped = await mgr.stop_host_monitoring(persist=False, timeout=0.05)
+        assert stopped is False
+        assert mgr._monitor_task is task, "Task reference must be preserved on cancellation timeout"
+        assert not task.done(), "Task must still be running"
+
+        status = mgr.get_status()
+        assert status["monitoring_state"] == "PAUSING_TIMED_OUT"
+        assert status["quiescence_confirmed"] is False
+
+        # Cleanup
+        should_exit = True
+        await asyncio.sleep(0.05)
+        await mgr.shutdown()
+
+    asyncio.run(_run())
+
+
+def test_repeated_pause_requests_after_timeout(monkeypatch):
+    """8. Test repeated pause requests after timeout do not deadlock and remain safe."""
+    async def _run():
+        from app.security.stream import ThreatStreamManager
+        from app.security.host_sensor import host_sensor
+
+        mgr = ThreatStreamManager()
+        monkeypatch.setattr(type(host_sensor), "auto_scan_in_progress", property(lambda self: True))
+        async def mock_wait_quiescence(timeout=5.0):
+            return False
+        monkeypatch.setattr(host_sensor, "wait_quiescence", mock_wait_quiescence)
+
+        # First pause attempt times out
+        await mgr.stop_host_monitoring(persist=False, timeout=0.05)
+        assert mgr.get_status()["monitoring_state"] == "PAUSING_TIMED_OUT"
+
+        # Second pause attempt
+        await mgr.stop_host_monitoring(persist=False, timeout=0.05)
+        assert mgr.get_status()["monitoring_state"] == "PAUSING_TIMED_OUT"
+
+        await mgr.shutdown()
+
+    asyncio.run(_run())
+
+
+def test_resume_prevented_while_worker_active(monkeypatch):
+    """9. Test resume is rejected while previous audit worker remains active."""
+    async def _run():
+        from app.security.stream import ThreatStreamManager
+        from app.security.host_sensor import host_sensor
+
+        mgr = ThreatStreamManager()
+        mgr.host_monitoring_active = False
+
+        # Simulate previous worker still active
+        monkeypatch.setattr(type(host_sensor), "auto_scan_in_progress", property(lambda self: True))
+
+        resumed = await mgr.start_host_monitoring(persist=False)
+        assert resumed is False, "Resume must be rejected while previous worker remains active"
+        assert mgr.host_monitoring_active is False
+
+        await mgr.shutdown()
+
+    asyncio.run(_run())
+
+
+def test_application_shutdown_during_blocked_scan(monkeypatch):
+    """10. Test application shutdown cleanly executes without deadlock during a blocked scan."""
+    async def _run():
+        from app.security.stream import ThreatStreamManager
+        from app.security.host_sensor import host_sensor
+
+        mgr = ThreatStreamManager()
+        # Simulate blocked quiescence on shutdown
+        async def mock_quiescence(timeout=2.0):
+            return False
+        monkeypatch.setattr(host_sensor, "wait_quiescence", mock_quiescence)
+
+        await mgr.shutdown()
+        assert mgr.host_monitoring_active is False
+        assert mgr._monitor_task is None
+
+    asyncio.run(_run())
+
+
+def test_recovery_after_worker_exits(monkeypatch):
+    """11. Test clean recovery once blocked worker eventually exits."""
+    async def _run():
+        from app.security.stream import ThreatStreamManager
+        from app.security.host_sensor import host_sensor
+
+        mgr = ThreatStreamManager()
+
+        # Step 1: Simulate timeout
+        worker_active = True
+        monkeypatch.setattr(type(host_sensor), "auto_scan_in_progress", property(lambda self: worker_active))
+        async def mock_wait_quiescence(timeout=5.0):
+            return not worker_active
+        monkeypatch.setattr(host_sensor, "wait_quiescence", mock_wait_quiescence)
+
+        await mgr.stop_host_monitoring(persist=False)
+        assert mgr.get_status()["monitoring_state"] == "PAUSING_TIMED_OUT"
+
+        # Step 2: Worker exits
+        worker_active = False
+
+        # Step 3: Check status reports clean PAUSED once quiescent
+        status = mgr.get_status()
+        assert status["monitoring_state"] == "PAUSED"
+
+        # Step 4: Resume now succeeds cleanly
+        res = await mgr.start_host_monitoring(persist=False)
+        assert res is True
+        assert mgr.host_monitoring_active is True
+
+        await mgr.stop_host_monitoring(persist=False)
+        await mgr.shutdown()
+
+    asyncio.run(_run())
+
+
+def test_no_automatic_alert_writes_after_confirmed_paused(db_session):
+    """12. Test that no automatic alert writes can occur after confirmed PAUSED status."""
+    from app.security.host_sensor import host_sensor
+    from app.security.stream import stream_manager
+    from app.models.alert import Alert
+
+    stream_manager.host_monitoring_active = False
+    host_sensor.request_cancellation()
+
+    initial_alerts = db_session.query(Alert).count()
+
+    # Attempt to run fast and full audits with check_active=True
+    alerts_fast = host_sensor.run_fast_audit(db_session, check_active=True)
+    alerts_full = host_sensor.run_full_audit(db_session, check_active=True)
+
+    assert alerts_fast == []
+    assert alerts_full == []
+    assert db_session.query(Alert).count() == initial_alerts

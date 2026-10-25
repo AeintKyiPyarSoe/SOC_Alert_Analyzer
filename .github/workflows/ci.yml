@@ -77,7 +77,7 @@ jobs:
 
       - name: Dependency Security Audit (pip-audit)
         run: |
-          pip-audit -r requirements.txt --desc on
+          pip-audit -r requirements.lock --desc on
 
       - name: Static AST Application Security Analysis (bandit)
         run: |

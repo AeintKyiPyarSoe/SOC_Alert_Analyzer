@@ -1,6 +1,13 @@
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
+
+def _to_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 
@@ -24,7 +31,7 @@ class IncidentCorrelator:
     """
 
     @classmethod
-    def correlate_alerts(cls, db: Session, window_seconds: Optional[int] = None) -> List[Incident]:
+    def correlate_alerts(cls, db: Session, window_seconds: Optional[int] = None, commit: bool = True) -> List[Incident]:
         if window_seconds is None:
             window_seconds = settings.CORRELATION_WINDOW_SECONDS
 
@@ -78,7 +85,10 @@ class IncidentCorrelator:
                     affected_incidents[incident.id] = incident
                     active_key_cache[key] = incident
 
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
         return list(affected_incidents.values())
 
     @staticmethod
@@ -88,10 +98,15 @@ class IncidentCorrelator:
             return clusters
 
         # Chronologically sort alerts before clustering to handle out-of-order ingestion
-        sorted_alerts = sorted(alerts, key=lambda a: a.timestamp)
+        def _get_ts(a: Alert) -> datetime:
+            return _to_utc(a.timestamp) or datetime.min.replace(tzinfo=timezone.utc)
+
+        sorted_alerts = sorted(alerts, key=_get_ts)
         current_cluster = [sorted_alerts[0]]
         for a in sorted_alerts[1:]:
-            if a.timestamp - current_cluster[-1].timestamp <= max_gap:
+            ts_a = _get_ts(a)
+            ts_prev = _get_ts(current_cluster[-1])
+            if ts_a - ts_prev <= max_gap:
                 current_cluster.append(a)
             else:
                 clusters.append(current_cluster)
@@ -113,16 +128,18 @@ class IncidentCorrelator:
         whose timeframe is adjacent (within window_seconds).
         """
         window_delta = timedelta(seconds=window_seconds)
-        valid_ts = [a.timestamp for a in cluster if a.is_valid_timestamp]
-        cluster_start = min(valid_ts) if valid_ts else cluster[0].timestamp
-        cluster_end = max(valid_ts) if valid_ts else cluster[-1].timestamp
+        valid_ts = [_to_utc(a.timestamp) for a in cluster if a.is_valid_timestamp and a.timestamp is not None]
+        cluster_start = min(valid_ts) if valid_ts else _to_utc(cluster[0].timestamp)
+        cluster_end = max(valid_ts) if valid_ts else _to_utc(cluster[-1].timestamp)
 
         max_cap = getattr(settings, "MAX_ALERTS_PER_INCIDENT", 1000)
         if active_cache and correlation_key in active_cache:
             cached = active_cache[correlation_key]
             if cached.status == "OPEN" and cached.alert_count < max_cap:
-                if (cached.last_seen >= cluster_start - window_delta and
-                        cached.first_seen <= cluster_end + window_delta):
+                c_last = _to_utc(cached.last_seen)
+                c_first = _to_utc(cached.first_seen)
+                if (c_last is not None and cluster_start is not None and c_first is not None and cluster_end is not None and
+                        c_last >= cluster_start - window_delta and c_first <= cluster_end + window_delta):
                     return cached
 
         first_alert = cluster[0]
@@ -168,13 +185,13 @@ class IncidentCorrelator:
         
         # Separate event timestamps from ingestion timestamps:
         # Use strictly alerts with valid event timestamps to determine incident boundaries.
-        valid_timestamps = [a.timestamp for a in cluster if a.is_valid_timestamp]
+        valid_timestamps = [_to_utc(a.timestamp) for a in cluster if a.is_valid_timestamp and a.timestamp is not None]
         if valid_timestamps:
             cluster_first_seen = min(valid_timestamps)
             cluster_last_seen = max(valid_timestamps)
         else:
-            cluster_first_seen = min(a.created_at for a in cluster)
-            cluster_last_seen = max(a.created_at for a in cluster)
+            cluster_first_seen = min(_to_utc(a.created_at) for a in cluster)
+            cluster_last_seen = max(_to_utc(a.created_at) for a in cluster)
 
         is_external = IPClassifier.is_public_ip(first_alert.source_ip)
         existing_incident = cls._find_matching_open_incident(
@@ -194,8 +211,17 @@ class IncidentCorrelator:
                 incident.correlation_key = correlation_key
 
             if valid_timestamps:
-                incident.first_seen = min(incident.first_seen, cluster_first_seen)
-                incident.last_seen = max(incident.last_seen, cluster_last_seen)
+                i_first = _to_utc(incident.first_seen)
+                if i_first and cluster_first_seen:
+                    incident.first_seen = min(i_first, cluster_first_seen)
+                elif cluster_first_seen:
+                    incident.first_seen = cluster_first_seen
+
+                i_last = _to_utc(incident.last_seen)
+                if i_last and cluster_last_seen:
+                    incident.last_seen = max(i_last, cluster_last_seen)
+                elif cluster_last_seen:
+                    incident.last_seen = cluster_last_seen
 
             new_links = 0
             for a in cluster:

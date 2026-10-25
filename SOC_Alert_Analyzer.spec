@@ -86,6 +86,7 @@ hiddenimports = [
     'app.security.upload_security',
     'app.security.logging_filter',
     'app.security.detection_benchmark',
+    'app.security.endpoint_attack_evaluator',
     'app.database.connection',
     'app.config',
     'app.main',

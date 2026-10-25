@@ -65,6 +65,18 @@ def wait_for_ready(base_url: str, max_wait: float = 30.0) -> bool:
         time.sleep(0.5)
     return False
 
+def kill_process_tree(proc):
+    if proc is None or proc.poll() is not None:
+        return
+    if sys.platform == 'win32':
+        subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
+    else:
+        proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
 def run_lifecycle_integration_tests(cmd_prefix: list, data_dir: str):
     print("=" * 70)
     print("SOC Alert Analyzer: Lifecycle Integration Test Across Process Restarts")
@@ -149,11 +161,7 @@ def run_lifecycle_integration_tests(cmd_prefix: list, data_dir: str):
 
     finally:
         print("  [*] Terminating Process A...")
-        proc_a.terminate()
-        try:
-            proc_a.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc_a.kill()
+        kill_process_tree(proc_a)
 
     # ---------------------------------------------------------
     # TEST D: Process Kill & Restart; Verify PAUSED Persisted
@@ -211,11 +219,7 @@ def run_lifecycle_integration_tests(cmd_prefix: list, data_dir: str):
 
     finally:
         print("  [*] Terminating Process D...")
-        proc_d.terminate()
-        try:
-            proc_d.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc_d.kill()
+        kill_process_tree(proc_d)
 
     # ---------------------------------------------------------
     # TEST G: Process Restart; Verify ACTIVE Restored
@@ -238,11 +242,7 @@ def run_lifecycle_integration_tests(cmd_prefix: list, data_dir: str):
         print("  [+] TEST G PASSED: ACTIVE monitoring verified across restart.")
     finally:
         print("  [*] Terminating Process G...")
-        proc_g.terminate()
-        try:
-            proc_g.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc_g.kill()
+        kill_process_tree(proc_g)
 
     print("\n" + "=" * 70)
     print("ALL TESTS (A through G) PASSED SUCCESSFULLY!")

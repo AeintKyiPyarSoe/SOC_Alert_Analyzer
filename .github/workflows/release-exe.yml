@@ -43,7 +43,7 @@ jobs:
 
       - name: Security Scan - Dependencies (pip-audit)
         run: |
-          pip-audit -r requirements.txt --desc on
+          pip-audit -r requirements.lock --desc on
 
       - name: Run Pytest Suite with Coverage Gate
         run: |
