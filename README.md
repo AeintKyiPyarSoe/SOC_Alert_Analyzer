@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/framework-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-335%20passed%20%7C%200%20skipped-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-336%20passed%20%7C%200%20skipped-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Coverage](https://img.shields.io/badge/coverage-86.40%25%20(Windows%203.12)-brightgreen.svg?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?style=flat&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Security Scans](https://img.shields.io/badge/security%20scans-Bandit%20%7C%20Pip--Audit%20%7C%20Ruff-blueviolet.svg?style=flat&logo=shield)](SECURITY.md)
@@ -260,7 +260,7 @@ The host security sensor provides passive, non-intrusive network exposure analys
 
 ## 🧪 Automated Testing & Quality Verification
 
-The repository maintains an automated pytest test suite (**335 passed, 0 skipped, 0 failed, and 1 warning** in the latest Windows Python 3.13 CI run (86.60% code coverage, enforced >=85% floor). All 10 Playwright Chromium browser scenarios are verified and executed with 0 skips) verifying all defensive security, parsing, session management, CSRF defense, correlation, risk calculation, and production guard logic:
+The repository maintains an automated pytest test suite (**336 passed, 0 skipped, 0 failed, and 1 warning** in the latest Windows Python 3.13 CI run (86.60% code coverage, enforced >=85% floor). All 10 Playwright Chromium browser scenarios are verified and executed with 0 skips) verifying all defensive security, parsing, session management, CSRF defense, correlation, risk calculation, and production guard logic:
 
 ```powershell
 python -m pytest -v --cov=app --cov-report=term-missing
@@ -298,7 +298,7 @@ tests/test_endpoint_attack_evaluation.py::test_expected_technique_independence P
 tests/test_network_reachability.py::test_assess_socket_reachability_passive_confidence PASSED
 tests/test_network_reachability.py::test_audit_network_sockets_dissociated_from_t1046 PASSED
 tests/test_sbom_and_lockfile.py::test_sbom_and_lockfile_component_count_parity PASSED
-================ 335 passed, 0 skipped, 1 warning in 48.01s =================
+================ 336 passed, 0 skipped, 1 warning in 48.01s =================
 ```
 tests/test_session_lifecycle.py::test_websocket_ticket_lifecycle_and_replay_defense PASSED
 tests/test_detection_resilience.py::test_risk_engine_nan_inf_handling PASSED
@@ -367,7 +367,7 @@ tests/test_mitre_visualization_and_samples.py::test_mitre_report_api_endpoints P
 ├── docs/                     # Specifications, requirements, and architecture docs
 ├── sample_data/              # Realistic Wazuh, Suricata, and Linux log samples
 ├── scripts/                  # Detection evaluation & utility automation scripts
-├── tests/                    # 335 collected pytest tests (335 passed, 0 skipped browser tests; 86.60% Windows Python 3.13 coverage, >=85% CI floor)
+├── tests/                    # 336 collected pytest tests (336 passed, 0 skipped browser tests; 86.60% Windows Python 3.13 coverage, >=85% CI floor)
 ├── .env.example              # Environment variables template
 ├── docker-compose.yml        # Multi-container hardened setup
 ├── Dockerfile                # Non-root container build file

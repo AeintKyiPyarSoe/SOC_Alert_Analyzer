@@ -4,7 +4,7 @@
 **Release Date:** October 25, 2026  
 **Authoritative Binary SHA-256 (Windows x64 Executable):** `18fdf1bcb5eb09fcd8b21a35ebe3e7c8eaf337b2219c6f70edab5c79436ca13c`  
 **Standalone EXE Size:** 54,131,022 bytes  
-**Test Suite Status:** 335 collected, 335 passed, 0 skipped, 0 failed (100% pass rate)  
+**Test Suite Status:** 336 collected, 336 passed, 0 skipped, 0 failed (100% pass rate)  
 **Browser Testing:** 10/10 genuine Playwright Chromium browser scenarios executed and passed with 0 skips  
 **Security Scans:** Bandit AST SAST (0 issues), Flake8 (0 errors), Pip-Audit (0 vulnerabilities)  
 **Detection Benchmarks:** 100% precision, 100% recall, 100% accuracy across all test benches  
@@ -22,13 +22,14 @@
   * Sanitizes session cookies (`soc_session=...`) to `soc_session=[REDACTED]`.
 * **Telemetry Preservation**: Safely preserves non-sensitive operational telemetry—including client IP, endpoint path, HTTP method, response status code, and latency.
 * **Launcher & Server Integration**: Configured secure Uvicorn log configurations across standalone launcher (`launcher.py`), Uvicorn server processes, and FastAPI startup lifespans.
-* **Comprehensive Test Suite**: Added `tests/test_security_logging.py` covering ticket redaction during handshakes, rejected connections, and nested logging arguments.
+* **Comprehensive Test Suite**: Added `tests/test_security_logging.py` covering ticket redaction during handshakes, rejected connections, nested logging arguments, and live Uvicorn server subprocess execution (`test_real_uvicorn_process_ticket_redaction`).
 
 ### ⚡ Monitoring Concurrency Hardening & Sensor Quiescence
 * **Owner-Bound Lifecycle Mutex (`app/security/stream.py`)**: Bound lifecycle mutex (`_get_owner_lock`) to the owner application loop, eliminating deadlocks during rapid concurrent start/pause cycles across asynchronous contexts and secondary threads.
+* **Cancellation Timeout & Lifecycle Hardening**: Directly awaited task cancellation with bounded timeouts (`_cancel_and_await_task`), cleanly handling `asyncio.CancelledError` inside background monitoring and simulation sleep cycles.
 * **Scan Cancellation Tokens (`app/security/host_sensor.py`)**: Introduced generation-tracked cancellation tokens (`scan_generation`, `_cancel_event`) in `HostSecuritySensor`.
 * **Zero Orphaned Findings on Pause**: Mid-audit cancellations cleanly roll back active SQLite transactions with zero uncommitted findings persisted to the database.
-* **Sensor Quiescence Assurance**: Added `wait_quiescence` to ensure background audit worker threads reach full completion before lifecycle transition states conclude.
+* **Sensor Quiescence Assurance**: Added `wait_quiescence` with timeout warnings to ensure background audit worker threads reach full completion before lifecycle transition states conclude.
 * **Concurrency Regression Suite**: Added `tests/test_monitoring_concurrency.py` verifying race-free toggling, cross-thread synchronous wrappers, and mid-audit rollbacks.
 
 ### 🚀 Static Asset Content Hash Fingerprinting & HTTP Cache Invalidation
@@ -52,18 +53,15 @@
 
 ---
 
-
----
-
 ### 🔐 Verified Release Artifacts & SHA-256 Checksum
 
-`	ext
+```text
 18fdf1bcb5eb09fcd8b21a35ebe3e7c8eaf337b2219c6f70edab5c79436ca13c  SOC_Alert_Analyzer.exe
-`
+```
 * **Binary Size**: 54,131,022 bytes
 * **Verification Command**:
-  `powershell
+  ```powershell
   python scripts/verify_release_checksum.py --verify dist/SHA256SUMS.txt
-  `
+  ```
 
 **Full Changelog**: https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/compare/v1.2.14...v1.2.15

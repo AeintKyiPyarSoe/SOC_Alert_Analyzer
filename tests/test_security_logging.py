@@ -177,3 +177,84 @@ def test_secure_uvicorn_log_config_structure():
     assert "security_redaction" in cfg["handlers"]["default"]["filters"]
     assert "security_redaction" in cfg["loggers"]["uvicorn.access"]["filters"]
     assert "security_redaction" in cfg["loggers"]["uvicorn.error"]["filters"]
+
+
+def test_real_uvicorn_process_ticket_redaction():
+    """Verify that a live Uvicorn server subprocess strictly redacts WebSocket tickets in its stdout."""
+    import os
+    import time
+    import socket
+    import subprocess
+    import sys
+    import tempfile
+    import urllib.request
+    import json
+    import websockets.sync.client
+
+    def _find_free_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('127.0.0.1', 0))
+            return s.getsockname()[1]
+
+    port = _find_free_port()
+    temp_dir = tempfile.mkdtemp(prefix="soc_uvicorn_log_test_")
+    env = os.environ.copy()
+    env["DATA_DIR"] = temp_dir
+    env["NO_BROWSER"] = "1"
+    admin_key = "admin_uvicorn_test_key_1234567890"
+    analyst_key = "analyst_uvicorn_test_key_1234567890"
+    secret_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    env["ADMIN_API_KEY"] = admin_key
+    env["ANALYST_API_KEY"] = analyst_key
+    env["SECRET_KEY"] = secret_key
+    env["ENVIRONMENT"] = "development"
+
+    cmd = [sys.executable, "launcher.py", "--port", str(port), "--no-browser"]
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    try:
+        # Wait for server readiness
+        start_wait = time.time()
+        ready = False
+        while time.time() - start_wait < 15:
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/stream/status", timeout=1.0) as resp:
+                    if resp.status == 200:
+                        ready = True
+                        break
+            except Exception:
+                time.sleep(0.2)
+        assert ready, "Server failed to start within timeout"
+
+        # Obtain WebSocket ticket
+        ticket_req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/v1/auth/ws-ticket",
+            headers={"X-API-Key": analyst_key},
+            method="POST"
+        )
+        with urllib.request.urlopen(ticket_req, timeout=3.0) as resp:
+            ticket_data = json.loads(resp.read().decode())
+            ticket = ticket_data["ticket"]
+            assert ticket.startswith("wst_")
+
+        # Connect over WebSocket with ticket
+        with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws/threats?ticket={ticket}") as ws:
+            ws.send("ping")
+            assert ws.recv() == "pong"
+
+    finally:
+        proc.terminate()
+        try:
+            stdout, _ = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, _ = proc.communicate()
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Assert raw ticket never appears in Uvicorn output
+    assert ticket not in stdout, f"Raw WebSocket ticket leaked into live Uvicorn output: {stdout}"
+    # Assert redacted ticket parameter appears in stdout
+    assert "ticket=[REDACTED]" in stdout or "ticket=wst_[REDACTED]" in stdout, (
+        f"Expected redacted ticket parameter in Uvicorn log output, got:\n{stdout}"
+    )

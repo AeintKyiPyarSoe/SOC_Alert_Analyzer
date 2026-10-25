@@ -177,10 +177,10 @@ async def live_threat_simulator_loop():
                 payload = generate_and_save_live_threat()
                 await stream_manager.broadcast(payload)
                 logger.info(f"Broadcasted live threat: {payload['alert']['description']}")
+            await asyncio.sleep(random.uniform(10.0, 16.0))
         except asyncio.CancelledError:
             logger.info("Live threat simulator loop cancelled cleanly.")
-            break
+            raise
         except Exception as e:
             logger.error(f"Error in live threat generator: {e}", exc_info=True)
-            
-        await asyncio.sleep(random.uniform(10.0, 16.0))
+            await asyncio.sleep(random.uniform(10.0, 16.0))

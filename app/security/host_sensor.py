@@ -135,6 +135,7 @@ class HostSecuritySensor:
         start_t = time.time()
         while self.scan_in_progress:
             if time.time() - start_t > timeout:
+                logger.warning(f"Host sensor wait_quiescence timed out after {timeout}s (scan still in progress).")
                 return False
             await asyncio.sleep(0.05)
         return True
@@ -1205,10 +1206,10 @@ async def real_host_monitor_loop():
                         "host_info": host_info
                     })
             tick += 1
+            await asyncio.sleep(2.0)
         except asyncio.CancelledError:
             logger.info("Host monitor background loop cancelled cleanly.")
-            break
+            raise
         except Exception as e:
             logger.error(f"Error in host monitor loop: {e}", exc_info=True)
-
-        await asyncio.sleep(2.0)
+            await asyncio.sleep(2.0)

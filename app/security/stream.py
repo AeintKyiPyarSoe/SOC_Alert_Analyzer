@@ -112,7 +112,7 @@ class ThreatStreamManager:
             fut = asyncio.run_coroutine_threadsafe(_spawn_helper(), loop)
             return fut.result(timeout=5.0)
 
-    async def _cancel_and_await_task(self, task: asyncio.Task):
+    async def _cancel_and_await_task(self, task: asyncio.Task, timeout: float = 5.0):
         task_loop = getattr(task, "get_loop", lambda: None)()
         try:
             current_loop = asyncio.get_running_loop()
@@ -122,21 +122,25 @@ class ThreatStreamManager:
         if current_loop and current_loop is task_loop:
             task.cancel()
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                pass
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.CancelledError, TimeoutError, asyncio.TimeoutError):
+                logger.debug(f"Task cancellation finished or timed out after {timeout}s: {task}")
+            except Exception as e:
+                logger.debug(f"Task cancellation finished with exception: {e}")
         elif task_loop and task_loop.is_running():
             async def _worker():
                 task.cancel()
                 try:
-                    await task
-                except (asyncio.CancelledError, Exception):
+                    await asyncio.wait_for(task, timeout=timeout)
+                except (asyncio.CancelledError, TimeoutError, asyncio.TimeoutError):
+                    pass
+                except Exception:
                     pass
             fut = asyncio.run_coroutine_threadsafe(_worker(), task_loop)
             try:
-                fut.result(timeout=5.0)
-            except Exception:
-                pass
+                fut.result(timeout=timeout + 1.0)
+            except Exception as e:
+                logger.debug(f"Cross-loop cancellation future completed with: {e}")
         else:
             task.cancel()
 
@@ -311,7 +315,9 @@ class ThreatStreamManager:
                 self._monitor_task = None
 
                 # Wait for running audit worker to reach quiescence
-                await host_sensor.wait_quiescence(timeout=5.0)
+                quiescent = await host_sensor.wait_quiescence(timeout=5.0)
+                if not quiescent:
+                    logger.warning("Host security sensor did not reach full quiescence within 5.0s on stop.")
             finally:
                 self._transition_state = None
             return self.host_monitoring_active
@@ -475,7 +481,9 @@ class ThreatStreamManager:
         self._simulator_task = None
         try:
             from app.security.host_sensor import host_sensor
-            await host_sensor.wait_quiescence(timeout=2.0)
+            quiescent = await host_sensor.wait_quiescence(timeout=2.0)
+            if not quiescent:
+                logger.warning("Host security sensor did not reach full quiescence within 2.0s on shutdown.")
         except Exception:
             pass
         logger.info("Cleanly shut down all background stream tasks.")
