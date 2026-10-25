@@ -2,8 +2,10 @@
 
 **Release Tag:** [v1.2.15](https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/releases/tag/v1.2.15)  
 **Release Date:** October 25, 2026  
-**Authoritative Binary SHA-256 (Windows x64 Executable):** `18fdf1bcb5eb09fcd8b21a35ebe3e7c8eaf337b2219c6f70edab5c79436ca13c`  
-**Standalone EXE Size:** 54,131,022 bytes  
+**Authoritative Binary SHA-256 (GitHub Actions Runner):** `3bee1dffab73d16559009752b0391334066f0acabef8303c2257472ba3728d3d`  
+**Standalone EXE Size (Runner):** 25,277,116 bytes (Windows Server 2022 / Python 3.12)  
+**Separate Local Build SHA-256 (not the published release artifact):** `18fdf1bcb5eb09fcd8b21a35ebe3e7c8eaf337b2219c6f70edab5c79436ca13c`  
+**Separate Local Build EXE Size:** 54,131,022 bytes (Windows 11 / Python 3.13)  
 **Test Suite Status:** 336 collected, 336 passed, 0 skipped, 0 failed (100% pass rate)  
 **Browser Testing:** 10/10 genuine Playwright Chromium browser scenarios executed and passed with 0 skips  
 **Security Scans:** Bandit AST SAST (0 issues), Flake8 (0 errors), Pip-Audit (0 vulnerabilities)  
@@ -53,15 +55,22 @@
 
 ---
 
-### 🔐 Verified Release Artifacts & SHA-256 Checksum
+### 🔐 Verified Release Artifacts & SHA-256 Checksums
 
+#### Official GitHub Release Asset (Windows Server 2022 / Python 3.12 runner)
 ```text
-18fdf1bcb5eb09fcd8b21a35ebe3e7c8eaf337b2219c6f70edab5c79436ca13c  SOC_Alert_Analyzer.exe
+3bee1dffab73d16559009752b0391334066f0acabef8303c2257472ba3728d3d  SOC_Alert_Analyzer.exe
 ```
-* **Binary Size**: 54,131,022 bytes
-* **Verification Command**:
+* **Official Binary Size**: 25,277,116 bytes
+* **Official Verification Command**:
   ```powershell
   python scripts/verify_release_checksum.py --verify dist/SHA256SUMS.txt
   ```
+
+#### Standalone Windows Executable (Local Build: Windows 11 / Python 3.13)
+```text
+18fdf1bcb5eb09fcd8b21a35ebe3e7c8eaf337b2219c6f70edab5c79436ca13c  SOC_Alert_Analyzer.exe
+```
+* **Local Binary Size**: 54,131,022 bytes
 
 **Full Changelog**: https://github.com/AeintKyiPyarSoe/SOC_Alert_Analyzer/compare/v1.2.14...v1.2.15
